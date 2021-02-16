@@ -1,0 +1,1630 @@
+<html>
+    <head>
+        <meta Content-Type:text/html; charset="UTF-8">
+        <title>SnuInfoVis Term Project - GPS</title>
+        <link rel="stylesheet" href="stylesheets/radar-chart.css">
+        <script type="text/javascript" src="http://d3js.org/d3.v6.min.js"></script>
+        <script type="text/javascript" src="javascripts/radar-chart.js"></script>
+    </head>
+    <style>
+        #tooltip-table {
+            position: absolute;
+            border: solid;
+            border-width: 2px;
+            border-radius: 4px 4px 4px 4px;
+            background-color: white;
+            padding: 5px;
+            text-align: left;
+            font-size: 11px;
+            top: 10%;
+            left: 10%;
+            width: 80%;
+            height: 80%;
+            padding-bottom: 40px;
+        }
+        #tooltip-table-close-button {
+            float: right;
+            display: block;
+            width: 30px;
+            height: 30px;
+        }
+        #tooltip-table-title {
+            font-size: xx-large;
+            display: block;
+            text-align: center;
+            padding-top: 20px;
+            padding-bottom: 20px;
+        }
+        #tooltip-table-div {
+            height: 80%;
+            overflow-y: scroll;
+        }
+        /* #tooltip-table-div::-webkit-scrollbar {
+            display: none;
+        } */
+        #tooltip-table-main {
+            font-size: x-large;
+            display: block;
+            margin: auto;
+            width: 90%;
+        }
+        .tooltip-table-main-row {
+            font-size: medium;
+        }
+        .tooltip-table-button {
+            font-size: large;
+            height: 50px;
+            width: 200px;
+            margin-bottom: 20px;
+            margin-left: 30px;
+            margin-right: 30px;
+        }
+        #tooltip-cards-div {
+            height: 80%;
+            overflow-y: scroll;
+        }
+        #tooltip-cards-main {
+            display: block;
+            margin: auto;
+            width: 90%;
+        }
+        #tooltip-radar-chart {
+            border: solid;
+            border-width: 2px;
+            border-radius: 4px 4px 4px 4px;
+            background-color: white;
+        }
+    </style>
+    <script>
+
+        let SVG_AREA_WIDTH = 500;
+        let SVG_AREA_WIDTH_LINE = 1000;
+        let SVG_AREA_HEIGHT = 500;
+        let AREA_MARGINS = {TOP:20, RIGHT:20, BOTTOM:30, LEFT:40};
+        let AREA_WIDTH = SVG_AREA_WIDTH - AREA_MARGINS.LEFT - AREA_MARGINS.RIGHT;
+        let AREA_WIDTH_LINE = SVG_AREA_WIDTH_LINE - AREA_MARGINS.LEFT - AREA_MARGINS.RIGHT;
+        let AREA_HEIGHT = SVG_AREA_HEIGHT - AREA_MARGINS.TOP - AREA_MARGINS.BOTTOM;
+        let GENRE_CATEGORY = ['k-pop', 'hiphop', 'classic', 'rock', 'r&b', 'jazz', 'country', 'pop']
+
+        let mData; // load json
+        let mMinYear = 1970; // fixed
+        let mMaxYear = 0;
+
+        let mSelectedYear = 1987;
+        let mSelectedGenre = GENRE_CATEGORY[3];
+        let mSelectedIndex = "danceability";
+        let mSelectedPopularity = 72;
+
+        let mAreaColorToRestore;
+        let mAreaSelected;
+
+        let initVasePlot =1;
+
+        let linetototo;
+        let lineX;
+        let lineY;
+        let lineXAxis;
+        let lineYAxis;
+
+        d3.json("data.json").then(function(data) {
+            mData = data;
+            init();
+        });
+
+        function init() {
+            console.log("mData size : " + mData.length);
+            d3.select("h1").text("GPS - Guidance to Popular Songs!");
+
+            // update year range from data.
+            for (let i = 0 ; i < mData.length ; i++) {
+                let year = mData[i].date.substring(0, 4);
+                // mMinYear = Math.min(mMinYear, parseInt(year)); // mMinYear needs to be fixed.
+                mMaxYear = Math.max(mMaxYear, parseInt(year));
+            }
+
+            drawAreaChart();
+            drawVasePlot();
+            initdrawLineChart();
+            drawTable();
+        }
+
+        // -------------------- UTIL apis --------------------
+        function translate(x, y) {
+            return 'translate(' + x + ', ' + y + ')';
+        }
+
+        function getSongById(id) {
+            for (let i = 0 ; i < mData.length ; i++) {
+                if (id == mData[i].id) {
+                    return mData[i];
+                }
+            }
+        }
+
+        function getSongsByYear(year) {
+            let ret = [];
+            for (let i = 0 ; i < mData.length ; i++) {
+                if (mData[i].date.substring(0, 4) == year) {
+                    ret.push(mData[i]);
+                }
+            }
+            return ret;
+        }
+
+	let colors = ["DarkSalmon"  , "DarkKhaki", "DarkSeaGreen" , "#7DCEA0", "#48C9B0", "#5DADE2","#BB8FCE", "Plum"]
+	function getColorByGenre(genre) {
+            for (let i = 0 ; i < GENRE_CATEGORY.length ; i++) {
+                if (genre == GENRE_CATEGORY[i]) {
+                    //return d3.schemeCategory10[i];
+                    return colors[i];
+                }
+            }
+        }
+
+        function getLineData(mSelectedYear,mSelectedGenre)
+        {
+            // console.log("getLineData in");
+
+            // console.log(mData);
+
+            let newData;
+            let newData2 = [];
+            let newData3 = [];
+
+            newData = getSongsByYear(mSelectedYear);
+
+            for (let i=0; i< newData.length; i++){
+                if(newData[i].genre==mSelectedGenre)
+                {
+                    newData2.push(newData[i]);
+                }
+            }
+
+            return newData2;
+
+        }
+
+        function getLineDataIndex(linedata,mSelectedIndex)
+        {
+            // console.log("getLineDataIndex in");
+
+            // console.log(linedata);
+
+			if(mSelectedIndex=="tempo")
+            {
+                let ret=[];
+
+                let minpop = d3.min(linedata,d=>d.popularity);
+                let maxpop = d3.max(linedata,d=>d.popularity);
+
+                console.log(minpop);
+                console.log(maxpop);
+
+                linedata.forEach(function(d){
+                    d.tempo = parseFloat(d.tempo);
+                })
+
+                let minn= d3.min(linedata,d=>d.tempo);
+                let maxx = d3.max(linedata,d=>d.tempo);
+                console.log(linedata);
+
+                console.log(minn);
+                console.log(maxx);
+
+                for(let i=minpop; i<=maxpop; i++)
+                {
+                    let temp=[];
+                    let mean=0.0;
+                    for(let j=0; j<linedata.length;j++)
+                    {
+                        if(linedata[j].popularity==i)
+                        {
+
+                            temp.push(linedata[j]);
+                        }
+                    }
+
+
+
+                    for(let k=0;k<temp.length;k++)
+                    {
+                        mean= (mean+parseFloat(temp[k][mSelectedIndex])-minn)/maxx;
+
+                    }
+                    if(temp.length>0)
+                    {
+                        ret.push({"id":mSelectedYear+mSelectedGenre+mSelectedIndex+i.toString(),"popularity":parseInt(i),"mean":Math.round(mean/temp.length*10000)/10000});
+                    }
+
+
+
+                }
+
+            // console.log(ret);
+
+            return ret;
+
+            }
+            else
+            {
+            let ret=[];
+
+            let minpop = d3.min(linedata,d=>d.popularity);
+            let maxpop = d3.max(linedata,d=>d.popularity);
+
+            // console.log(minpop);
+            // console.log(maxpop);
+
+            for(let i=minpop; i<=maxpop; i++)
+            {
+                let temp=[];
+                let mean=0.0;
+                for(let j=0; j<linedata.length;j++)
+                {
+                    if(linedata[j].popularity==i)
+                    {
+
+                        temp.push(linedata[j]);
+                    }
+                }
+
+                for(let k=0;k<temp.length;k++)
+                {
+                    mean= mean+parseFloat(temp[k][mSelectedIndex]);
+                    // console.log("i is "+ i.toString())
+                    // console.log("$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
+                    // console.log(mean);
+                }
+                if(temp.length>0)
+                {
+                    ret.push({"id":mSelectedYear+mSelectedGenre+mSelectedIndex+i.toString(),"popularity":parseInt(i),"mean":Math.round(mean/temp.length*10000)/10000});
+                }
+
+
+
+            }
+
+            // console.log(ret);
+
+            return ret;
+			}
+        }
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // -------------------- DRAWING APIs --------------------
+        function drawAreaChart() {
+            let areaChartSvg = d3.select('#area');
+
+            // axis
+            let areaX = d3.scaleLinear().domain([mMinYear, mMaxYear + 1 /* +1 for 2020 data */ ])
+                    .range([0, AREA_WIDTH]);
+            let areaXAxis = d3.axisBottom(areaX).tickFormat(d3.format("d"));
+            areaChartSvg.append("g").attr('transform', translate(AREA_MARGINS.LEFT,
+                    AREA_HEIGHT + AREA_MARGINS.TOP)).call(areaXAxis);
+
+            let areaY = d3.scaleLinear().domain([100, 0]).range([0, AREA_HEIGHT]);
+            let areaYAxis = d3.axisLeft(areaY);
+            areaChartSvg.append("g").attr('transform', translate(AREA_MARGINS.LEFT, AREA_MARGINS.TOP))
+                    .call(areaYAxis);
+
+            let xUnit = AREA_WIDTH / (mMaxYear - mMinYear + 1);
+            let yUnit = AREA_HEIGHT / 100;
+            let yBase = AREA_HEIGHT + AREA_MARGINS.TOP;
+
+            // prepare prev values
+            let prevSongs = getSongsByYear(mMinYear - 1);
+            let prevData = {};
+
+            // generate keys
+            for (let i = 0 ; i < GENRE_CATEGORY.length ; i++) {
+                prevData[ GENRE_CATEGORY[ i ] ] = 0;
+            }
+
+            // area tooltips
+            let areaTooltip = d3.select('body').append('div').style('position', 'absolute')
+                    .style('visibility', 'hidden').style('color', 'gray');
+            let areaTooltipFixed = d3.select('body').append("div").style('position', 'absolute')
+                    .style("top", 350 + "px").style("left", 210 + "px").style("visibility", "hidden")
+                    .text(mSelectedYear + ', ' + mSelectedGenre);
+
+            // get counts per key(genre)
+            for (let i = 0 ; i < prevSongs.length ; i++) {
+                for (let j = 0 ; j < GENRE_CATEGORY.length ; j++) {
+                    if (prevSongs[i].genre == GENRE_CATEGORY[j]) {
+                        prevData[ GENRE_CATEGORY[j] ]++;
+                    }
+                }
+            }
+
+            // normalize and calculate height values
+            for (let i in prevData) {
+                prevData[i] = ((prevData[i] / prevSongs.length) * 100) * yUnit;
+            }
+
+            for (let i = mMinYear ; i <= mMaxYear ; i++) {
+                // prepare cur values
+                let curSongs = getSongsByYear(i);
+                let curData = {};
+
+                // generate keys
+                for (let j = 0 ; j < GENRE_CATEGORY.length ; j++) {
+                    curData[ GENRE_CATEGORY[j] ] = 0;
+                }
+
+                // get counts
+                for (let j = 0 ; j < curSongs.length ; j++) {
+                    for (let k = 0 ; k < GENRE_CATEGORY.length ; k++) {
+                        if (curSongs[j].genre == GENRE_CATEGORY[k]) {
+                            curData[ GENRE_CATEGORY[k] ]++;
+                        }
+                    }
+                }
+
+                // normalize and calculate height values
+                for (let j = 0 ; j < GENRE_CATEGORY.length ; j++) {
+                    let counts = curData[ GENRE_CATEGORY[j] ];
+                    curData[ GENRE_CATEGORY[j] ] = ((counts / curSongs.length) * 100) * yUnit;
+                }
+
+                let prevX = AREA_MARGINS.LEFT + 1/* for y axis line */ + (xUnit * (i - mMinYear));
+                let curX = prevX + xUnit;
+                let accPrevY = 0;
+                let accCurY = 0;
+
+                // line with fill from prev to cur
+                for (let j = 0 ; j < GENRE_CATEGORY.length ; j++) {
+                    let curGenre = GENRE_CATEGORY[j];
+                    let curColor = getColorByGenre(curGenre);
+                    let dStr = 'M ' + prevX + ' ' + (yBase - accPrevY) +
+                            ' V ' + (yBase - accPrevY - (prevData[ curGenre ])) +
+                            ' L ' + curX + ' ' + (yBase - accCurY - (curData[ curGenre ])) +
+                            ' V ' + (yBase - accCurY);
+                    areaChartSvg.append('path').attr('fill', curColor).attr('id', 'genre_' + j)
+                            .attr('stroke', curColor).attr('d', dStr).style('opacity', 0)
+                            .on('mouseenter', function() {
+                                if (d3.select(this).attr('class') != 'selected') {
+                                    d3.select(this).attr('fill', d3.rgb(curColor).darker(1));
+                                }
+                                return areaTooltip.style("visibility", "visible").text(i + ', ' + curGenre);
+                            }).on('mousemove', function() {
+                                return areaTooltip.style("top", (event.pageY - 10) + "px")
+                                        .style("left", ( event.pageX + 10 ) + "px")
+                                        .text(i + ', ' + curGenre);
+                            }).on('mouseleave', function() {
+                                if (d3.select(this).attr('class') != 'selected') {
+                                    d3.select(this).attr('fill', curColor);
+                                }
+                                return areaTooltip.style("visibility", "hidden");
+                            }).on('click', function() {
+                                console.log('mouse click(year : ' + i + ', genre : ' + curGenre + ')');
+
+                                // restore the prev
+                                mAreaSelected.attr('fill', mAreaColorToRestore);
+                                mAreaSelected.attr('class', '');
+
+                                // set new one to be selected
+                                mAreaSelected = d3.select(this);
+                                mAreaColorToRestore = curColor;
+                                mAreaSelected.attr('class', 'selected');
+                                mAreaSelected.attr('fill', d3.rgb(curColor).darker(2));
+
+                                mSelectedYear = i;
+                                mSelectedGenre = curGenre;
+                                drawVasePlot();
+
+                                return areaTooltipFixed.style("top", (event.pageY - 10) + "px")
+                                        .style("left", ( event.pageX + 10 ) + "px")
+                                        .style("visibility", "visible").text(i + ', ' + curGenre);
+                            }).each(function(){
+                                if (mSelectedYear == i && mSelectedGenre == curGenre) {
+                                    mAreaSelected = d3.select(this);
+                                    mAreaSelected.attr('class', 'selected');
+                                    mAreaColorToRestore = curColor;
+                                }
+                            });
+                    let border = 'M '  + prevX + ' ' + (yBase - accPrevY - (prevData[ curGenre ])) +
+                                 ' L ' + curX + ' ' + (yBase - accCurY - (curData[ curGenre ]));
+                    areaChartSvg.append('path').attr('id', 'genre_' + j).style('opacity', 0)
+                            .attr('stroke', d3.rgb(curColor).darker(2)).attr('d', border);
+                    accPrevY += prevData[ curGenre ];
+                    accCurY += curData[ curGenre ];
+                }
+                prevSongs = curSongs;
+                prevData = curData;
+            }
+
+            // animation
+            for (let i = 0 ; i < GENRE_CATEGORY.length ; i++) {
+                d3.selectAll('#genre_' + i).transition().delay((i * 100)).duration(100)
+                        .style('opacity', 1);
+            }
+
+            // show default selection and fixed tooltip
+            mAreaSelected.transition().delay(GENRE_CATEGORY.length * 100).duration(100)
+                    .attr('fill', d3.rgb(mAreaColorToRestore).darker(2));
+            areaTooltipFixed.transition().delay(GENRE_CATEGORY.length * 100).duration(100)
+                    .style("visibility", "visible");
+        }
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        function drawVasePlot() {
+
+         //disappear with animation
+            d3.selectAll("rect")
+                .attr("fill-opacity", 1)
+                .attr("stroke-opacity", 1)
+                .transition()
+                .duration(300)
+                //change fill and stroke opacity to avoid CSS conflicts
+                .attr("fill-opacity", 0)
+                .attr("stroke-opacity", 0).remove()
+
+            d3.selectAll(".whisker_line")
+                 .attr("fill-opacity", 1)
+                .attr("stroke-opacity", 1)
+                .transition()
+                .duration(300)
+                //change fill and stroke opacity to avoid CSS conflicts
+                .attr("fill-opacity", 0)
+                .attr("stroke-opacity", 0).remove()
+
+            d3.selectAll(".box_line")
+                 .attr("fill-opacity", 1)
+                .attr("stroke-opacity", 1)
+                .transition()
+                .duration(300)
+                //change fill and stroke opacity to avoid CSS conflicts
+                .attr("fill-opacity", 0)
+                .attr("stroke-opacity", 0).remove()
+
+            d3.selectAll("toto")
+                 .attr("fill-opacity", 1)
+                .attr("stroke-opacity", 1)
+                .transition()
+                //change fill and stroke opacity to avoid CSS conflicts
+                .attr("fill-opacity", 0)
+                .attr("stroke-opacity", 0).remove()
+
+            d3.selectAll(".box_axis")
+                .attr("fill-opacity", 1)
+                .attr("stroke-opacity", 1)
+                .transition()
+                .duration(300)
+                //change fill and stroke opacity to avoid CSS conflicts
+                .attr("fill-opacity", 0)
+                .attr("stroke-opacity", 0).remove()
+
+            d3.selectAll(".stooltip")
+                .attr("fill-opacity", 1)
+                .attr("stroke-opacity", 1)
+                .transition()
+                .duration(300)
+                //change fill and stroke opacity to avoid CSS conflicts
+                .attr("fill-opacity", 0)
+                .attr("stroke-opacity", 0).remove()
+
+
+            //svg.transition().duration(1200).style('opacity', 1);
+
+            // prepare values
+            let prevSongs = getSongsByYear(mSelectedYear);
+            //prepare attributes
+            let valence = []
+            let energy = []
+            let acousticness = []
+            let danceability = []
+
+            function getNormalized(array) {
+                let min = Math.min(...array),
+                    max = Math.max(...array);
+                 return array.map(v => (v - min) / (max - min));
+            }
+
+            let temp = []
+
+            for (let i = 0 ; i < prevSongs.length ; i++) {
+                if (prevSongs[i].genre == mSelectedGenre) {
+                    console.log(mSelectedGenre)
+                    valence.push(prevSongs[i].valence)
+                    energy.push(prevSongs[i].energy)
+                    acousticness.push(prevSongs[i].acousticness)
+                    danceability.push(prevSongs[i].danceability)
+                    temp.push(prevSongs[i].tempo)
+                    }
+                }
+            let tempo = getNormalized(temp)
+
+
+            //console.log(valence)
+            //console.log(energy)
+            //console.log(acousticness)
+            //console.log(danceability)
+            //console.log((tempo))
+
+
+            //valence
+            let sorted_valence = valence.sort(d3.ascending)
+            let v_q1 = d3.quantile(sorted_valence, .25)
+            let v_median = d3.quantile(sorted_valence, .5)
+            let v_q3 = d3.quantile(sorted_valence, .75)
+            let v_interQuantileRange = v_q3 - v_q1
+            let v_min = v_q1 - (1.5 * v_interQuantileRange)
+            let v_max = v_q1 + (1.5 * v_interQuantileRange)
+            if (v_min <0){
+                 v_min =0
+            }
+            if (v_max >1){
+                 v_max =1
+            }
+
+            //energy
+            let sorted_energy = energy.sort(d3.ascending)
+            let e_q1 = d3.quantile(sorted_energy, .25)
+            let e_median = d3.quantile(sorted_energy, .5)
+            let e_q3 = d3.quantile(sorted_energy, .75)
+            let e_interQuantileRange = e_q3 - e_q1
+            let e_min = e_q1 - 1.5 * e_interQuantileRange
+            let e_max = e_q1 + 1.5 * e_interQuantileRange
+            if (e_min <0){
+                 e_min =0
+            }
+            if (e_max >1){
+                 e_max =1
+            }
+
+            //acousticness
+            let sorted_acousticness = acousticness.sort(d3.ascending)
+            let a_q1 = d3.quantile(sorted_acousticness, .25)
+            let a_median = d3.quantile(sorted_acousticness, .5)
+            let a_q3 = d3.quantile(sorted_acousticness, .75)
+            let a_interQuantileRange = a_q3 - a_q1
+            let a_min = a_q1 - 1.5 * a_interQuantileRange
+            let a_max = a_q1 + 1.5 * a_interQuantileRange
+            if (a_min <0){
+                 a_min =0
+            }
+            if (a_max >1){
+                 a_max =1
+            }
+
+            //danceability
+            let sorted_danceability = danceability.sort(d3.ascending)
+            let d_q1 = d3.quantile(sorted_danceability, .25)
+            let d_median = d3.quantile(sorted_danceability, .5)
+            let d_q3 = d3.quantile(sorted_danceability, .75)
+            let d_interQuantileRange = d_q3 - d_q1
+            let d_min = d_q1 - 1.5 * d_interQuantileRange
+            let d_max = d_q1 + 1.5 * d_interQuantileRange
+            if (d_min <0){
+                 d_min =0
+            }
+            if (d_max >1){
+                 d_max =1
+            }
+
+            //tempo
+            let sorted_tempo = tempo.sort(d3.ascending)
+            let t_q1 = d3.quantile(sorted_tempo, .25)
+            let t_median = d3.quantile(sorted_tempo, .5)
+            let t_q3 = d3.quantile(sorted_tempo, .75)
+            let t_interQuantileRange = t_q3 - t_q1
+            let t_min = t_q1 - 1.5 * t_interQuantileRange
+            let t_max = t_q1 + 1.5 * t_interQuantileRange
+            if (t_min <0){
+                 t_min =0
+            }
+            if (t_max >1){
+                 t_max =1
+            }
+
+
+            // set the dimensions and margins of the graph
+            var margin = {top: 20, right: 20, bottom: 30, left: 40},
+                 width = 500 - margin.left - margin.right,
+                 height = 500 - margin.top - margin.bottom;
+
+            // append the svg object to the body of the page
+            let svg = d3.select("#vase")
+                        .append("svg")
+                        .attr("width", width + margin.left + margin.right)
+                        .attr("height", height + margin.top + margin.bottom)
+                        .attr('class','box_axis')
+                        .append("g")
+                        .attr("transform",
+                           "translate(" + margin.left + "," + margin.top + ")");
+            // Show the X scale
+            let x = d3.scaleBand()
+                    .range([ 0, width ])
+                    .domain(["valence", "energy", "acousticness","danceability","tempo"])
+                    .paddingInner(1)
+                    .paddingOuter(.5)
+                 svg.append("g")
+                    .attr("transform", "translate(0," + height + ")")
+                    .call(d3.axisBottom(x))
+
+            // Show the Y scale
+            let y = d3.scaleLinear()
+                    .domain([0,1])
+                    .range([height, 0])
+                 svg.append("g").call(d3.axisLeft(y))
+
+            let histogram = d3.histogram()
+                .domain(y.domain())
+                .thresholds(y.ticks(20))    // Important: how many bins approx are going to be made? It is the 'resolution' of the violin plot
+                .value(d => d)
+
+
+
+            let vyScale = d3.scaleLinear().domain([v_min,v_max]).range([y(v_min), y(v_max)])
+            let vyAxis = d3.axisRight().scale(vyScale).tickSize(200)
+            //////valence
+            let areaV = d3.area()
+                        .x0(d => -d.length/3 +4.5)
+                        .x1(d => d.length/3 +4.5)
+                        .y(d => vyScale(d.x0))
+                        .curve(d3.curveCatmullRom)
+
+            svg
+             .selectAll("myViolin")
+             .data([valence]).enter()        // So now we are working group per group
+             .append("g")
+            .attr("transform", (d)=>"translate( 40)") // Translation on the right to be at the group position
+            .append("path")
+             .style("stroke", "none")
+             .style("fill","pink")
+             .style("opacity","0.8")
+              .attr("d", d => areaV(histogram(d)))   // This makes the line smoother to give the violin appearance. Try d3.curveStep to see the difference
+
+
+            var v_center = 40
+            var v_width = 50
+            // Show the vertical line
+            svg
+            .append("line")
+              .attr('class','whisker_line')
+              .attr("x1", v_center+4.5)
+              .attr("x2", v_center+4.5)
+              .attr("y1", y(v_min) )
+              .attr("y2", y(v_max) )
+              .attr("stroke", "black")
+              .attr("stroke-width",1)
+
+            // Show the box
+
+            svg
+            .append("rect")
+              .attr('id', 'valence')
+              .attr("min", v_min )
+              .attr("q1", v_q1 )
+              .attr("median", v_median )
+              .attr("q3", v_q3)
+              .attr("IQR", v_interQuantileRange)
+              .attr("max", v_max)
+              .attr("x", v_center - v_width/2+4.5)
+              .attr("y", y(v_q3) )
+              .attr("height", (y(v_q1)-y(v_q3)) )
+              .attr("width", v_width )
+              .attr("stroke", "black")
+              .style("fill", "#ff89da")
+              .style("opacity","0.6")
+              .attr("stroke-width",0.8)
+
+
+            // show median, min and max horizontal lines
+            svg
+            .selectAll("toto")
+            .data([v_min, v_median, v_max])
+            .enter()
+            .append("line")
+            .attr('class','box_line')
+              .attr("x1", v_center-v_width/2 +4.5)
+              .attr("x2", v_center+v_width/2 +4.5)
+              .attr("y1", function(d){ return(y(d))} )
+              .attr("y2", function(d){ return(y(d))} )
+              .attr("stroke", "black")
+              .attr("stroke-width",0.8)
+
+
+
+            //////energy
+
+
+            let eyScale = d3.scaleLinear().domain([e_min,e_max]).range([y(e_min), y(e_max)])
+            let eyAxis = d3.axisRight().scale(eyScale).tickSize(200)
+
+
+            let areaE = d3.area()
+                        .x0(d => -d.length/3 +3)
+                        .x1(d => d.length/3+3)
+                        .y(d => eyScale(d.x0))
+                        .curve(d3.curveCatmullRom)
+
+            svg
+             .selectAll("myViolin")
+             .data([energy]).enter()        // So now we are working group per group
+             .append("g")
+            .attr("transform", (d)=>"translate( 130)") // Translation on the right to be at the group position
+            .append("path")
+             .style("stroke", "none")
+             .style("fill","lightgreen")
+             .style("opacity","0.5")
+              .attr("d", d => areaE(histogram(d)))   // This makes the line smoother to give the violin appearance. Try d3.curveStep to see the difference
+
+
+            var e_center = 130
+            var e_width = 50
+            // Show the vertical line
+            svg
+            .append("line")
+              .attr('class','whisker_line')
+              .attr("x1", e_center +3)
+              .attr("x2", e_center+3)
+              .attr("y1", y(e_min) )
+              .attr("y2", y(e_max) )
+              .attr("stroke", "black")
+              .attr("stroke-width",1)
+            // Show the box
+            svg
+            .append("rect")
+              .attr('id', 'energy')
+              .attr("min", e_min )
+              .attr("q1", e_q1 )
+              .attr("median", e_median )
+              .attr("q3", e_q3)
+              .attr("IQR", e_interQuantileRange)
+              .attr("max", e_max)
+              .attr("x", e_center - e_width/2 +3)
+              .attr("y", y(e_q3) )
+              .attr("height", (y(e_q1)-y(e_q3)) )
+              .attr("width", e_width )
+              .attr("stroke", "black")
+              .style("fill", "#00d073")
+              .style("opacity","0.6")
+              .attr("stroke-width",0.8)
+
+
+            // show median, min and max horizontal lines
+            svg
+            .selectAll("toto")
+            .data([e_min, e_median, e_max])
+            .enter()
+            .append("line")
+            .attr('class','box_line')
+              .attr("x1", e_center-e_width/2+3)
+              .attr("x2", e_center+e_width/2+3)
+              .attr("y1", function(d){ return(y(d))} )
+              .attr("y2", function(d){ return(y(d))} )
+              .attr("stroke", "black")
+              .attr("stroke-width",0.8)
+
+
+            //////acousticness
+            let ayScale = d3.scaleLinear().domain([a_min,a_max]).range([y(a_min), y(a_max)])
+            let ayAxis = d3.axisRight().scale(ayScale).tickSize(200)
+
+            let areaA = d3.area()
+                        .x0(d => -d.length/3 +0.5)
+                        .x1(d => d.length/3+0.5)
+                        .y(d => ayScale(d.x0))
+                        .curve(d3.curveCatmullRom);
+
+            svg
+             .selectAll("myViolin")
+             .data([acousticness]).enter()        // So now we are working group per group
+             .append("g")
+            .attr("transform", (d)=>"translate( 220)") // Translation on the right to be at the group position
+            .append("path")
+             .style("stroke", "none")
+             .style("fill","yellow")
+             .style("opacity","0.3")
+              .attr("d", d => areaA(histogram(d)))   // This makes the line smoother to give the violin appearance. Try d3.curveStep to see the difference
+
+
+             var a_center = 220
+             var a_width = 50
+            // Show the vertical line
+            svg
+            .append("line")
+              .attr('class','whisker_line')
+              .attr("x1", a_center+0.5)
+              .attr("x2", a_center+0.5)
+              .attr("y1", y(a_min) )
+              .attr("y2", y(a_max) )
+              .attr("stroke", "black")
+              .attr("stroke-width",1)
+
+            // Show the box
+            svg
+            .append("rect")
+              .attr('id', 'acousticness')
+              .attr("min", a_min )
+              .attr("q1", a_q1 )
+              .attr("median", a_median )
+              .attr("q3", a_q3)
+              .attr("IQR", a_interQuantileRange)
+              .attr("max", a_max)
+              .attr("x", a_center - a_width/2+0.5)
+              .attr("y", y(a_q3) )
+              .attr("height", (y(a_q1)-y(a_q3)) )
+              .attr("width", a_width )
+              .attr("stroke", "black")
+              .style("fill", "#ffe587")
+              .style("opacity","0.6")
+              .attr("stroke-width",0.8)
+
+            // show median, min and max horizontal lines
+            svg
+            .selectAll("toto")
+            .data([a_min, a_median, a_max])
+            .enter()
+            .append("line")
+            .attr('class','box_line')
+              .attr("x1", a_center-a_width/2+0.5)
+              .attr("x2", a_center+a_width/2+0.5)
+              .attr("y1", function(d){ return(y(d))} )
+              .attr("y2", function(d){ return(y(d))} )
+              .attr("stroke", "black")
+              .attr("stroke-width",0.8)
+
+
+             //danceability
+             let dyScale = d3.scaleLinear().domain([d_min,d_max]).range([y(d_min), y(d_max)])
+             let dyAxis = d3.axisRight().scale(dyScale).tickSize(200)
+
+             let areaD = d3.area()
+                        .x0(d => -d.length/3 -1)
+                        .x1(d => d.length/3-1)
+                        .y(d => dyScale(d.x0))
+                        .curve(d3.curveCatmullRom);
+
+            svg
+             .selectAll("myViolin")
+             .data([danceability]).enter()        // So now we are working group per group
+             .append("g")
+            .attr("transform", (d)=>"translate(310)") // Translation on the right to be at the group position
+            .append("path")
+             .style("stroke", "none")
+             .style("fill","red")
+             .style("opacity","0.3")
+              .attr("d", d => areaD(histogram(d)))   // This makes the line smoother to give the violin appearance. Try d3.curveStep to see the difference
+
+
+            var d_center = 310
+            var d_width = 50
+            // Show the vertical line
+            svg
+            .append("line")
+              .attr('class','whisker_line')
+              .attr("x1", d_center-1)
+              .attr("x2", d_center-1)
+              .attr("y1", y(d_min) )
+              .attr("y2", y(d_max) )
+              .attr("stroke", "black")
+              .attr("stroke-width",1)
+
+            // Show the box
+            svg
+            .append("rect")
+              .attr('id', 'danceability' )
+              .attr("min", d_min )
+              .attr("q1", d_q1 )
+              .attr("median", d_median )
+              .attr("q3", d_q3)
+              .attr("IQR", d_interQuantileRange)
+              .attr("max", d_max)
+              .attr("x", d_center - d_width/2-1)
+              .attr("y", y(d_q3) )
+              .attr("height", (y(d_q1)-y(d_q3)) )
+              .attr("width", d_width )
+              .attr("stroke", "black")
+              .style("fill", "#ff7972")
+              .style("opacity","0.6")
+              .attr("stroke-width",0.8)
+
+
+            // show median, min and max horizontal lines
+            svg
+            .selectAll("toto")
+            .data([d_min, d_median, d_max])
+            .enter()
+            .append("line")
+              .attr('class','box_line')
+              .attr("x1", d_center-d_width/2-1)
+              .attr("x2", d_center+d_width/2-1)
+              .attr("y1", function(d){ return(y(d))} )
+              .attr("y2", function(d){ return(y(d))} )
+              .attr("stroke", "black")
+              .attr("stroke-width",0.8)
+
+
+            //tempo
+            let tyScale = d3.scaleLinear().domain([t_min,t_max]).range([y(t_min), y(t_max)])
+            let tyAxis = d3.axisRight().scale(tyScale).tickSize(200)
+
+            let areaT = d3.area()
+                        .x0(d => -d.length/3-3.5)
+                        .x1(d => d.length/3)
+                        .y(d => tyScale(d.x0))
+                        .curve(d3.curveCatmullRom);
+
+            svg
+             .selectAll("myViolin")
+             .data([tempo]).enter()        // So now we are working group per group
+             .append("g")
+            .attr("transform", (d)=>"translate(400)") // Translation on the right to be at the group position
+            .append("path")
+             .style("stroke", "none")
+             .style("fill","blue")
+             .style("opacity","0.3")
+              .attr("d", d => areaT(histogram(d)))   // This makes the line smoother to give the violin appearance. Try d3.curveStep to see the difference
+
+            var t_center = 400
+            var t_width = 50
+            // Show the vertical line
+            svg
+            .append("line")
+              .attr('class','whisker_line')
+              .attr("x1", t_center-3.5)
+              .attr("x2", t_center-3.5)
+              .attr("y1", y(t_min) )
+              .attr("y2", y(t_max) )
+              .attr("stroke", "black")
+              .attr("stroke-width",1)
+
+            // Show the box
+            svg
+            .append("rect")
+              .attr('id', 'tempo' )
+              .attr("min", t_min )
+              .attr("q1", t_q1 )
+              .attr("median", t_median )
+              .attr("q3", t_q3)
+              .attr("IQR", t_interQuantileRange)
+              .attr("max", t_max)
+              .attr("x", t_center - t_width/2-3.5)
+              .attr("y", y(t_q3) )
+              .attr("height", (y(t_q1)-y(t_q3)) )
+              .attr("width", t_width )
+              .attr("stroke", "black")
+              .style("fill", "#4259ff")
+              .style("opacity","0.6")
+              .attr("stroke-width",0.8)
+
+
+            // show median, min and max horizontal lines
+            svg
+            .selectAll("toto")
+            .attr('class','box_line')
+            .data([t_min, t_median, t_max])
+            .enter()
+            .append("line")
+              .attr("x1", t_center-t_width/2-3.5)
+              .attr("x2", t_center+t_width/2-3.5)
+              .attr("y1", function(d){ return(y(d))} )
+              .attr("y2", function(d){ return(y(d))} )
+              .attr("stroke", "black")
+              .attr("stroke-width",0.8)
+
+            //animation
+
+            const rectTooltip = d3.select('body')
+                            .append("div")
+                            .attr("class", "tooltip")
+                            .style("position", "absolute")
+                            .style("visibility", "hidden");
+
+            const selectedTooltip = d3.select('body')
+                            .append("div")
+                            .attr("class", "stooltip")
+                            .style("position", "absolute")
+                            .style("visibility", "hidden");
+
+            let objSelected = false;
+            indexColor = "#ff7972"
+
+            svg
+            .selectAll('rect')
+            .on("mouseover", function(d) {
+            prev = d3.select(this).style("fill");
+            min = d3.select(this).attr('min')
+            median = d3.select(this).attr('median')
+            max = d3.select(this).attr('max')
+            q1 = d3.select(this).attr('q1')
+            q3 = d3.select(this).attr('q3')
+
+            h = d3.select(this).attr('y')
+            w= d3.select(this).attr('x')
+            d3.select(this).style("fill", d3.rgb(prev).brighter(0.6));
+            return rectTooltip.style("visibility", "visible").style("top", (+h)+80+"px").style("left",(+w)+620+"px")
+            .html("<p class='tooltip'>"  +"Max: " + d3.format(".3f")(q3) +"<br>Q3: " + d3.format(".3f")(q3)
+                                 +"<br>Median: " + d3.format(".3f")(median) + "<br>Q1: " + d3.format(".3f")(q1)
+                                 +  "<br>Min: "+ d3.format(".3f")(min)
+            ).style("font-size", "12px").style("background", "white").style("border", "1px solid black").style("padding", "2px")
+            .style("box-shadow", "2px 2px 2px 0px black").style("font-family", "verdana");
+
+            })
+            .on("mouseout", function(d) {
+                if (objSelected == false){
+                     d3.select(this).style("fill",prev);
+                rectTooltip.transition().style("visibility", "hidden");
+            }
+            }
+            )
+            .on('click', function(d) {
+            let div = d3.select("body").append("div")
+                .attr("id", "tooltip-box")
+                .style("visibility", "hidden");
+
+            console.log('hi' );
+            if (d3.select(this).attr('id') == 'valence') {
+                if(mSelectedIndex!='valence'){
+                mSelectedIndex = 'valence'
+                indexColor = "#ff89da"
+                console.log(mSelectedIndex)
+                drawLineChart()
+                }
+
+                                }
+            if (d3.select(this).attr('id') == 'energy') {
+                if(mSelectedIndex!='energy'){
+                mSelectedIndex = 'energy'
+                indexColor = "#00d073"
+                console.log(mSelectedIndex)
+                drawLineChart()
+                }
+                                }
+            if (d3.select(this).attr('id') == 'acousticness') {
+                if(mSelectedIndex!='acousticness'){
+                mSelectedIndex = 'acousticness'
+                indexColor = "#ffe587"
+                console.log(mSelectedIndex)
+                drawLineChart()
+                }
+                                }
+            if (d3.select(this).attr('id') == 'danceability') {
+                if(mSelectedIndex!='danceability'){
+                mSelectedIndex = 'danceability'
+                indexColor = "#ff7972"
+                console.log(mSelectedIndex)
+                drawLineChart()
+                }
+                                }
+            if (d3.select(this).attr('id') == 'tempo') {
+                if(mSelectedIndex!='tempo'){
+                mSelectedIndex = 'tempo'
+                indexColor = "#4259ff"
+                console.log(mSelectedIndex)
+                drawLineChart()
+                }
+                                }
+
+            return selectedTooltip.style("visibility", "visible").style("top", (+h)+80+"px").style("left",(+w)+620+"px")
+            .html("<p class='tooltip'>" + "<strong>" + mSelectedIndex+ "</strong>"  +"<br>Max: " + d3.format(".3f")(q3) +"<br>Q3: " + d3.format(".3f")(q3)
+                                 +"<br>Median: " + d3.format(".3f")(median) + "<br>Q1: " + d3.format(".3f")(q1)
+                                 +  "<br>Min: "+ d3.format(".3f")(min))
+                        .style("font-size", "12px").style("background",  d3.rgb(indexColor).brighter(0.6)).style("border", "1px solid black").style("padding", "2px")
+                        .style("box-shadow", "2px 2px 2px 0px black").style("font-family", "verdana").style("text-align", "center").style("text-transform", "uppercase");
+
+                drawLineChart()
+                })
+;
+
+            if(initVasePlot==0){
+              drawLineChart()
+            }
+            else{
+                initVasePlot=0;
+            }
+        }
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            function drawLineChart() {
+                console.log(mSelectedIndex)
+                console.log(indexColor)
+
+
+            // console.log("drawLineChart in in in ")
+
+            let linedata = getLineData(mSelectedYear,mSelectedGenre)
+
+            let lineChartSvg = d3.select('#line');
+
+            const t_line = lineChartSvg.transition().duration(500);
+
+            // // axis
+            // let lineX = d3.scaleLinear().domain([d3.min(linedata,d=>d.popularity),d3.max(linedata,d=>d.popularity)])
+            //         .range([0, AREA_WIDTH_LINE]);
+            // let lineXAxis = d3.axisBottom(lineX);
+            // //.tickFormat(d3.format("d"));
+
+            // lineChartSvg.append("g").attr('transform', translate(AREA_MARGINS.LEFT,
+            //         AREA_HEIGHT + AREA_MARGINS.TOP)).call(lineXAxis);
+
+            // let lineY = d3.scaleLinear().domain([1, 0]).range([0, AREA_HEIGHT]);
+            // let lineYAxis = d3.axisLeft(lineY);
+            // lineChartSvg.append("g").attr('transform', translate(AREA_MARGINS.LEFT, AREA_MARGINS.TOP))
+            //         .call(lineYAxis);
+
+
+            // mSelectedIndex = "danceability";
+            linedata = getLineDataIndex(linedata,mSelectedIndex);
+
+            // console.log(linedata);
+
+            let linedata2 = [];
+            linedata2.push(linedata);
+
+            const areaTooltip = d3.select('body').append("div").style("position", "absolute")
+                        .style("z-index", "10").style("visibility", "hidden");
+
+
+            // linetototo = d3.line()
+            //                 .x(function(d){console.log("kkkkkkkkkkk");return lineX(d.popularity)})
+            //                 .y(function(d){return lineY(d.mean)});
+
+            // linetototo()
+
+            lineX.domain([d3.min(linedata,d=>d.popularity),d3.max(linedata,d=>d.popularity)]);
+
+            lineChartSvg.selectAll('.lineXAxis').transition().duration(1200).call(lineXAxis);
+
+            lineChartSvg
+            .selectAll('.line_path')
+            .data(linedata2,d=>d.id)
+            .join(
+                enter=>enter
+                .append('path')
+                .attr('class','line_path')
+                .attr('d',function(d){return linetototo(d);})
+                .attr('fill','none')
+                .attr('stroke','black')
+                // .attr('opacity',0)
+                ,
+
+                update=>update
+                .attr('d',function(d){return linetototo(d);})
+                .attr('opacity',0)
+                .call(update=>update.transition(t_line)
+
+                .attr('opacity',1)
+                )
+
+                ,
+
+                exit=>exit
+                .remove()
+
+            )
+
+
+            lineChartSvg
+            .selectAll('circle')
+
+            .data(linedata,d=>d.id)
+            .join(
+                enter=>enter
+                .append('circle')
+                .attr('r',6.5)
+                .attr('fill',indexColor)
+                .attr('id',d=>d.popularity)
+                .attr('cx',d=>lineX(d.popularity))
+                .attr('cy',d=>lineY(d.mean))
+                .attr('opacity',0)
+                .style('stroke','black')
+                .attr('transform',translate(AREA_MARGINS.LEFT, AREA_MARGINS.TOP))
+                .on('mouseenter', function(event,d) {
+                    // console.log("#$@#$%@#$%!@#$!@$!@$#!@$!$@")
+                    // console.log(d)
+                                d3.select(this).attr('fill', d3.rgb(indexColor).darker(2)).attr('r',10);
+                                return areaTooltip.style("visibility", "visible").text("popularity : " + d.popularity.toString()+" "+mSelectedIndex+" : "+d.mean );
+                            })
+                .on('mousemove', function(event,d) {
+                                return areaTooltip.style("top", (event.pageY - 10) + "px")
+                                        .style("left", ( event.pageX + 10 ) + "px")
+                                        .text("popularity : " + d.popularity.toString()+" "+mSelectedIndex+" : "+d.mean );
+                            })
+                .on('mouseleave', function(event,d) {
+                                d3.select(this).attr('fill', indexColor).attr('r',6.5);
+                                return areaTooltip.style("visibility", "hidden");
+                            })
+                .on('click', function(event,d) {
+                                console.log('mouse click(popularity : ' + d.popularity );
+                                mSelectedPopularity = d.popularity;
+                                showTable();
+                            })
+
+                .call(update=>update.transition(t_line).delay(500).attr('opacity',1))
+                ,
+
+                update => update
+                .call(update=>update.transition(t_line).delay(500)
+                .attr('opacity',1)
+                .attr('cx',d=>lineX(d.popularity))
+                .attr('cy',d=>lineY(d.mean))
+                )
+                ,
+                exit=>exit
+                .remove()
+
+
+            )
+
+
+
+
+        }
+
+        function initdrawLineChart() {
+            // console.log(mSelectedYear)
+            // console.log(mSelectedGenre)
+
+            let linedata = getLineData(mSelectedYear,mSelectedGenre)
+
+
+            // console.log(linedata);
+
+            let lineChartSvg = d3.select('#line');
+
+            // axis
+            lineX = d3.scaleLinear().domain([d3.min(linedata,d=>d.popularity),d3.max(linedata,d=>d.popularity)])
+                    .range([0, AREA_WIDTH_LINE]);
+            lineXAxis = d3.axisBottom(lineX);
+            //.tickFormat(d3.format("d"));
+
+            lineChartSvg.append("g").attr('transform', translate(AREA_MARGINS.LEFT,
+                    AREA_HEIGHT-200 + AREA_MARGINS.TOP)).attr('class','lineXAxis').call(lineXAxis);
+
+            lineChartSvg.append("text").attr("transform", translate(AREA_MARGINS.LEFT+(AREA_WIDTH_LINE-AREA_MARGINS.LEFT)/2,AREA_HEIGHT-140)).style("text-anchor","middle").text("Popularity");
+
+
+            lineY = d3.scaleLinear().domain([1, 0]).range([0, AREA_HEIGHT-200]);
+            lineYAxis = d3.axisLeft(lineY);
+            lineChartSvg.append("g").attr('transform', translate(AREA_MARGINS.LEFT, AREA_MARGINS.TOP))
+                    .call(lineYAxis);
+
+
+            // mSelectedIndex = "danceability";
+            linedata = getLineDataIndex(linedata,mSelectedIndex);
+
+            let linedata2 = [];
+            linedata2.push(linedata);
+
+            const areaTooltip = d3.select('body').append("div").style("position", "absolute")
+                        .style("z-index", "10").style("visibility", "hidden");
+
+
+            linetototo = d3.line()
+                            .x(function(d){return lineX(d.popularity)})
+                            .y(function(d){return lineY(d.mean)});
+
+            // linetototo()
+
+            lineChartSvg
+            .append('g')
+            .attr('transform',translate(AREA_MARGINS.LEFT, AREA_MARGINS.TOP))
+            .selectAll('.line_path')
+            .data(linedata2,d=>d.id)
+
+            .enter()
+
+                .append('path')
+                .attr('class','line_path')
+                .attr('d',function(d){return linetototo(d);})
+                .attr('fill','none')
+                .attr('stroke','black')
+                .attr('opacity',0)
+
+            .transition().duration(1200).attr('opacity',1)
+
+
+            lineChartSvg
+            .append('g')
+            .attr('transform',translate(AREA_MARGINS.LEFT, AREA_MARGINS.TOP))
+            .selectAll('circle')
+            .data(linedata,d=>d.id)
+            .enter()
+                .append('circle')
+                .attr('r',6.5)
+                .attr('fill',indexColor)
+                .attr('id',d=>d.popularity)
+                .attr('cx',d=>lineX(d.popularity))
+                .attr('cy',d=>lineY(d.mean))
+                .style('stroke','black')
+                .attr('opacity',0)
+                .on('mouseenter', function(event,d) {
+                    // console.log("#$@#$%@#$%!@#$!@$!@$#!@$!$@")
+                    // console.log(d)
+                                d3.select(this).attr('fill', d3.rgb(indexColor).darker(2)).attr('r',10);
+                                return areaTooltip.style("visibility", "visible").text("popularity : " + d.popularity.toString()+" "+mSelectedIndex+" : "+d.mean );
+                            })
+                .on('mousemove', function(event,d) {
+                                return areaTooltip.style("top", (event.pageY - 10) + "px")
+                                        .style("left", ( event.pageX + 10 ) + "px")
+                                        .text("popularity : " + d.popularity.toString()+" "+mSelectedIndex+" : "+d.mean );
+                            })
+                .on('mouseleave', function(event,d) {
+                                d3.select(this).attr('fill', indexColor).attr('r',6.5);
+                                return areaTooltip.style("visibility", "hidden");
+                            })
+                .on('click', function(event,d) {
+                                console.log('mouse click(popularity : ' + d.popularity );
+                                mSelectedPopularity = d.popularity;
+                                showTable();
+                            })
+
+            .transition().duration(1200).attr('opacity',1)
+
+        }
+
+        function drawTable() {
+
+
+            // define base elements of tooltip table
+
+            let div = d3.select("body").append("div")
+                .attr("id", "tooltip-table")
+                .style("visibility", "hidden");
+
+            let button = div.append("button")
+                .attr("id", "tooltip-table-close-button")
+                .text("x")
+                .on("click", closeTooltip);
+
+            let title = div.append("span").attr("id", "tooltip-table-title");
+            let divButtons = div.append("div").attr("id", "tooltip-table-buttons").style("text-align", "center");
+            let but1 = divButtons.append("button").attr("class", "tooltip-table-button").text("Show table")
+                .on("click", function() {
+                    divTable.style("display", null);
+                    divCards.style("display", "none");
+                });
+            let but2 = divButtons.append("button").attr("class", "tooltip-table-button").text("Show cards")
+                .on("click", function() {
+                    divTable.style("display", "none");
+                    divCards.style("display", null);
+                });
+            let divTable = div.append("div").attr("id", "tooltip-table-div");
+            let svgTable = divTable.append("svg").attr("id", "tooltip-table-main");
+            let divCards = div.append("div").attr("id", "tooltip-cards-div").style("display", "none");
+            let svgCards = divCards.append("svg").attr("id", "tooltip-cards-main");
+
+            let radarTooltip = d3.select('body').append("div").attr("id", "tooltip-radar-chart")
+                .style("position", "absolute").style("z-index", "10").style("visibility", "hidden")
+                .style("top", 0).style("left", 0)
+            radarTooltip.append("span").attr("id", "tooltip-radar-chart-key").style("display", "block");
+            radarTooltip.append("span").attr("id", "tooltip-radar-chart-bpm").style("display", "block");
+        }
+
+        function showTable() {
+            let column_names = ["title", "artist", mSelectedIndex];
+            let column_toggles = [1, 1, 1];
+
+            // get filtered data
+            let tableMData = mData.filter(x => x.date.substring(0, 4) == mSelectedYear)
+                .filter(x => x.genre == mSelectedGenre);
+            let minTempo = tableMData.reduce((prev, next) => parseFloat(prev["tempo"]) < parseFloat(next["tempo"]) ? prev : next)["tempo"];
+            let maxTempo = tableMData.reduce((prev, next) => parseFloat(prev["tempo"]) > parseFloat(next["tempo"]) ? prev : next)["tempo"];
+            tableMData = tableMData.filter(x => x.popularity == mSelectedPopularity);
+
+            // define x, y scale of table
+            let xScaleStart = d3.scaleOrdinal().domain(column_names).range(["0%", "40%", "70%"]);
+            let xScaleMiddle  = d3.scaleOrdinal().domain(column_names).range(["20%", "55%", "85%"]);
+            let xWidth = d3.scaleOrdinal().domain(column_names).range(["40%", "30%", "30%"]);
+            let yScale = d3.scaleBand().domain(d3.range(0, tableMData.length + 1)).range([0, (tableMData.length + 1) * 50]);
+
+            // open tooltip table
+            openTooltip();
+
+            // set title of tooltip
+            let title = d3.select("span#tooltip-table-title");
+            title.text(mSelectedYear + " " + mSelectedGenre + " musics (Popularity: " + mSelectedPopularity + "), "
+                + tableMData.length + " item" + (tableMData.length == 1 ? "" : "s"));
+
+            // set height of table
+            let svg = d3.select("svg#tooltip-table-main")
+                .style("height", (tableMData.length + 1) * 50 + "px");
+
+            // set header of table
+            let headerItems = svg.append("g").attr("class", "tooltip-table-main-header")
+                .selectAll("text").data(column_names).enter().append("g");
+            headerItems.append("rect").attr("x", d => xScaleStart(d)).attr("y", "0px")
+                .attr("rx", "4px").attr("ry", "4px").attr("fill", d3.color(getColorByGenre(mSelectedGenre)).darker(1))
+                .attr("width", d => xWidth(d)).attr("height", "50px")
+                .attr("stroke", "white").attr("stroke-width", "1px");
+            headerItems.append("text").attr("class", d => ("tooltip-table-main-header-" + d))
+                .text(d => (d.charAt(0).toUpperCase() + d.slice(1))).attr("fill", "white")
+                .attr("alignment-baseline", "middle").attr("text-anchor", "middle")
+                .attr("x", d => xScaleMiddle(d)).attr("y", yScale(0) + 25 + "px")
+                .on("mouseenter", function() {
+                    d3.select(this).style("text-decoration", "underline");
+                })
+                .on("mouseleave", function() {
+                    d3.select(this).style("text-decoration", "none");
+                })
+                .on("click", function(e, d) {
+                    let toggle = column_toggles[column_names.indexOf(d)];
+                    let newTableMData = tableMData.sort((a, b) => {
+                        if (d == "title" || d == "artist") {
+                            return toggle * a[d].localeCompare(b[d]);
+                        } else {
+                            return toggle * (a[d] < b[d] ? -1 : 1);
+                        }
+                    });
+                    column_toggles[column_names.indexOf(d)] = -toggle;
+                    d3.select("g.tooltip-table-main-rows").selectAll("g.tooltip-table-main-row").data(newTableMData).each(function (row) {
+                        d3.select(this).selectAll("g").data(column_names).each(function (column_name) {
+                            d3.select(this).select("text").text(row[column_name]);
+                        })
+                    })
+                    addLinkToTitle(minTempo, maxTempo);
+                })
+
+            // set contents of table
+            let rows = svg.append("g").attr("class", "tooltip-table-main-rows")
+                .selectAll("g").data(tableMData).enter()
+                .append("g").attr("class", "tooltip-table-main-row").each(function (row, i) {
+                    let rowItems = d3.select(this).selectAll("text").data(column_names).enter().append("g");
+                    rowItems.append("rect").attr("x", d => xScaleStart(d)).attr("y", yScale(i + 1) + "px")
+                        .attr("rx", "4px").attr("ry", "4px").attr("fill", getColorByGenre(mSelectedGenre))
+                        .attr("width", d => xWidth(d)).attr("height", "50px")
+                        .attr("stroke", "white").attr("stroke-width", "1px");
+                    rowItems.append("text").attr("class", d => ("tooltip-table-main-row-" + d)).text(d => row[d])
+                        .attr("alignment-baseline", "middle")
+                        .attr("x", d => xScaleStart(d).replace("0", "2")).attr("y", yScale(i + 1) + 25 + "px");
+                });
+            addLinkToTitle(minTempo, maxTempo);
+
+            let svgCards = d3.select("#tooltip-cards-main")
+                .style("height", Math.ceil(tableMData.length / 4) * 300 + "px")
+                .selectAll("g").data(tableMData).enter()
+                .append("g").attr("class", "tooltip-cards-radar-chart").each(function (row, index) {
+                    let i = index - (index % 4), j = index % 4;
+                    RadarChart.defaultConfig.color = getColorByGenre(row["genre"]);
+                    let g = d3.select(this);
+                    g.append("svg").attr("id", "tooltip-radar-chart")
+                        .attr("x", (j * (100 / 4)) + "%").attr("y", (i / 4) * 300)
+                        .attr("width", 200).attr("height", 200)
+                        .datum(makeRadarChartData(row, minTempo, maxTempo)).call(RadarChart.chart());
+                    let title = g.append("text").attr("id", "tooltip-cards-radar-chart-title")
+                        .attr("x", (j * (100 / 4)) + "%").attr("y", (i / 4) * 300 + 220);
+                    title.append("tspan").style("font-weight", "bold").text("TITLE ");
+                    title.append("tspan").text(row["title"]);
+                    let artist = g.append("text").attr("id", "tooltip-cards-radar-chart-artist")
+                        .attr("x", (j * (100 / 4)) + "%").attr("y", (i / 4) * 300 + 240);
+                    artist.append("tspan").style("font-weight", "bold").text("ARTIST ");
+                    artist.append("tspan").text(row["artist"]);
+                    let key = g.append("text").attr("id", "tooltip-cards-radar-chart-key")
+                        .attr("x", (j * (100 / 4)) + "%").attr("y", (i / 4) * 300 + 260);
+                    key.append("tspan").style("font-weight", "bold").text("KEY ");
+                    key.append("tspan").text(getKeyFromData(row["key"], row["mode"]));
+                    let bpm = g.append("text").attr("id", "tooltip-cards-radar-chart-bpm")
+                        .attr("x", (j * (100 / 4)) + "%").attr("y", (i / 4) * 300 + 280);
+                    bpm.append("tspan").style("font-weight", "bold").text("BPM ");
+                    bpm.append("tspan").text(parseInt(row["tempo"]));
+                });
+            addLinkToArea();
+        }
+
+        function openTooltip() {
+            d3.selectAll(".stooltip").remove()
+            // remove all table contents
+            d3.selectAll("svg#tooltip-table-main g.tooltip-table-main-header").remove();
+            d3.selectAll("svg#tooltip-table-main g.tooltip-table-main-rows").remove();
+            d3.selectAll("svg#tooltip-cards-main g.tooltip-cards-radar-chart").remove();
+
+            // open
+            d3.select("div#tooltip-table").style("visibility", "visible");
+        }
+
+        function closeTooltip() {
+            // close
+            d3.select("div#tooltip-table").style("visibility", "hidden");
+
+            // remove all table contents
+            d3.selectAll("svg#tooltip-table-main g.tooltip-table-main-header").remove();
+            d3.selectAll("svg#tooltip-table-main g.tooltip-table-main-rows").remove();
+            d3.selectAll("svg#tooltip-cards-main g.tooltip-cards-radar-chart").remove();
+        }
+
+        function makeRadarChartData(row, minTempo, maxTempo) {
+            let tempo = parseFloat(row["tempo"]);
+            let data = [{
+                className: 'song', // optional can be used for styling
+                axes: [
+                    {axis: "valence", value: parseFloat(row["valence"])},
+                    {axis: "energy", value: parseFloat(row["energy"])},
+                    {axis: "acousticness", value: parseFloat(row["acousticness"])},
+                    {axis: "danceability", value: parseFloat(row["danceability"])},
+                    {axis: "tempo", value: (tempo - minTempo) / (maxTempo - minTempo)}
+                ]
+            }];
+
+            return data;
+        }
+
+        function getKeyFromData(key, mode) {
+            const stringKey = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
+            const stringMode = ["Minor", "Major"];
+
+            return stringKey[parseInt(key)] + " " + stringMode[parseInt(mode)];
+        }
+
+        function addLinkToTitle(minTempo, maxTempo) {
+            // open new window of songdata.io when title is clicked
+            d3.selectAll("g.tooltip-table-main-row").each(function (row) {
+                let url = "https://songdata.io/track/" + row["id"];
+                d3.select(this).select("text.tooltip-table-main-row-title")
+                    .on("mouseenter", function() {
+                        RadarChart.defaultConfig.color = getColorByGenre(row["genre"]);
+                        d3.select("div#tooltip-radar-chart svg#tooltip-radar-chart").remove();
+                        d3.select("div#tooltip-radar-chart").append("svg").attr("id", "tooltip-radar-chart")
+                            .attr("width", 200).attr("height", 200).datum(makeRadarChartData(row, minTempo, maxTempo)).call(RadarChart.chart());
+                        d3.select("span#tooltip-radar-chart-key").html("<b>KEY</b> " + getKeyFromData(row["key"], row["mode"]));
+                        d3.select("span#tooltip-radar-chart-bpm").html("<b>BPM</b> " + parseInt(row["tempo"]));
+                        d3.select("div#tooltip-radar-chart").style("visibility", "visible");
+                        d3.select(this).style("text-decoration", "underline").style("cursor", "pointer");
+                    })
+                    .on("mousemove", function(e) {
+                        d3.select("div#tooltip-radar-chart")
+                            .style("top", (e.pageY < screen.height / 2 ? (e.pageY - 10) : (e.pageY - 190)) + "px")
+                            .style("left", (e.pageX + 10) + "px");
+                    })
+                    .on("mouseleave", function() {
+                        d3.select("div#tooltip-radar-chart").style("visibility", "hidden");
+                        d3.select(this).style("text-decoration", "none").style("cursor", "default");
+                    })
+                    .on("click", function() {
+                        window.open(url, "new", "top=0, left=100, width=800, height=1000", "_blank");
+                    });
+            });
+        }
+
+        function addLinkToArea() {
+            d3.selectAll("g.tooltip-cards-radar-chart").each(function (row) {
+                let url = "https://songdata.io/track/" + row["id"];
+                d3.select(this).select("svg#tooltip-radar-chart polygon")
+                    .on("mouseenter.f2", function() {
+                        d3.select(this).style("cursor", "pointer");
+                    })
+                    .on("mouseleave.f2", function() {
+                        d3.select(this).style("cursor", "default");
+                    })
+                    .on("click", function() {
+                        window.open(url, "new", "top=0, left=100, width=800, height=1000", "_blank");
+                    })
+            });
+        }
+
+    </script>
+    <body>
+        <h1>Loading...</h1>
+        <svg id="area" width=500 height=500 />
+        <svg id="vase" width=500 height=500 />
+
+        <svg id="line" width=1000 height=350 />
+    </body>
+</html>

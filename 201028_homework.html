@@ -1,0 +1,681 @@
+<html>
+    <head>
+        <meta Content-Type:text/html; charset="UTF-8">
+        <title>InfoVis Homework2</title>
+    <head>
+        <script src="https://d3js.org/d3.v6.min.js"></script>
+        <script>
+            let mData = [];
+            let mCurRanks = [];
+            let mCurYear = 1982;
+            let mOldCategory = "rank";
+            let mCurCategory = "rank";
+            let mOldRanks = [];
+            let mMinYear = 1982;
+            let mMaxYear = 2019;
+            let mMaxRank = 10;
+            let mMaxWinRate = 0.5;
+            let mMinWinRate = 0.5;
+            let mMaxDiffGame = 0;
+            let mMinDiffGame = 0;
+            let mMaxTeamCount = 10;
+            let mTeamData = [];
+            let mColorIndex = 0;
+            let mTableSvg;
+            let mLineChartSvg;
+            let mBarChartSvg;
+
+			let LINE_CHART_SVG_WIDTH = 600;
+            let BAR_CHART_SVG_WIDTH = 480;
+			let SVG_HEIGHT = 500;
+            let TABLE_TOP_MARGIN = 10;
+			let LINE_MARGIN = {TOP: 20, RIGHT: 10, BOTTOM:30, LEFT: 40};
+            let BAR_MARGIN = {TOP: 20, RIGHT: 40, BOTTOM:30, LEFT: 40};
+            let TABLE_HEIGHT = SVG_HEIGHT - TABLE_TOP_MARGIN;
+		    let LINE_CHART_WIDTH = LINE_CHART_SVG_WIDTH - LINE_MARGIN.LEFT - LINE_MARGIN.RIGHT;
+            let LINE_CHART_HEIGHT = SVG_HEIGHT - LINE_MARGIN.TOP - LINE_MARGIN.BOTTOM;
+            let BAR_CHART_WIDTH = BAR_CHART_SVG_WIDTH - BAR_MARGIN.LEFT - BAR_MARGIN.RIGHT;
+            let BAR_CHART_HEIGHT = SVG_HEIGHT - BAR_MARGIN.TOP - BAR_MARGIN.BOTTOM;
+            let BAR_CHART_INTERVAL = 10;
+
+            let mTableRowInterval;
+            let mLineChartRankInterval;
+            let mLineChartWinRateInterval;
+            let mLineChartYearInterval;
+
+            let mBarChartRectWidth;
+            let mBarChartRectHeightUnit;
+
+            // html color names : https://bl.ocks.org/enjalot/7c0fe907ba2010fed420
+            // Note : MUST more than 22
+			let COLORS = ["pink", "green", "orange", "cyan", "gold",
+                            "brown", "blue", "purple", "deeppink", "olive",
+                            "red", "lime", "coral", "Moccasin", "Aquamarine",
+                            "RosyBrown", "DeepSkyBlue", "Fuchsia", "Violet", "PaleVioletRed",
+                            "PaleGreen", "CadetBlue", "Tan", "RoyalBlue", "DarkOrange",
+                            "Firebrick", "SpringGreen", "Turquoise", "Sienna", "CornflowerBlue"
+					];
+
+            d3.json('201028_data.json').then(function(data) {
+                mData = data;
+                // console.log("reading json has done. mData.length : " + mData.length);
+                parseTeamData();
+                mTableRowInterval = TABLE_HEIGHT / (mData[0].rankings.length + 1);
+                mLineChartRankInterval = LINE_CHART_HEIGHT / (mMaxTeamCount - 1);
+                mLineChartYearInterval = LINE_CHART_WIDTH / (mMaxYear - mMinYear);
+                mLineChartWinRateUnit = LINE_CHART_HEIGHT / ((mMaxWinRate - mMinWinRate) * 1000);
+                mLineChartDiffGameInterval = LINE_CHART_HEIGHT / (mMaxDiffGame - mMinDiffGame);
+                //console.log("mMaxWinRate : " + mMaxWinRate);
+                //console.log("mMinWinRate : " + mMinWinRate);
+                //console.log("mLineChartWinRateUnit : " + mLineChartWinRateUnit);
+                //console.log("mMaxDiffGame : " + mMaxDiffGame);
+                //console.log("mMinDiffGame : " + mMinDiffGame);
+                //console.log("mLineChartDiffGameInterval : " + mLineChartDiffGameInterval);
+                mBarChartRectWidth = (BAR_CHART_WIDTH - ((mData[0].rankings.length + 1) * BAR_CHART_INTERVAL))
+                        / mData[0].rankings.length;
+                mBarChartRectHeightUnit = BAR_CHART_HEIGHT / mData[0].rankings[0].games;
+                // console.log("mTeamData.length : " + mTeamData.length);
+                // console.log("mBarChartRectWidth : " + mBarChartRectWidth);
+                // console.log("mLineChartDiffGameInterval : " + mLineChartDiffGameInterval);
+                init();
+            });
+
+            function getNextColor() {
+                let ret = COLORS[mColorIndex];
+                mColorIndex++;
+                return ret;
+            }
+
+            function getColor(team) {
+                for (let i = 0 ; i < mTeamData.length ; i++) {
+                    if (team == mTeamData[i].name) {
+                        return mTeamData[i].color;
+                    }
+                }
+                return null;
+            }
+
+		    function translate(x, y) {
+		        return 'translate(' + x + ', ' + y + ')';
+            }
+
+            function init() {
+                // add year selections
+                let selYear = d3.select("#selYear");
+                for (let i = 0 ; i < mData.length ; i++) {
+                    selYear.append("option").text(mData[i].year);
+                }
+                selYear.on('change', function() {
+                    onYearChanged(d3.select(this).property('value'));
+                    d3.select(this).attr("disabled", true).transition().delay(2400).attr("disabled", null);
+                });
+
+                // add category selection
+                let selCat = d3.select("#selCategory");
+                selCat.on('change', function() {
+                    onCategoryChanged(d3.select(this).property('value'));
+                    d3.select(this).attr("disabled", true).transition().delay(2400).attr("disabled", null);
+                });
+
+
+                // draw table
+                mCurRanks = mData[0].rankings;
+                mCurYear = mData[0].year;
+                mTableSvg = d3.select('#table');
+                mLineChartSvg = d3.select('#lineChart');
+                mBarChartSvg = d3.select('#barChart');
+
+                for (let i = 0 ; i < mCurRanks.length ; i++) {
+                    let cur = mCurRanks[i];
+                    let curColor = getColor(cur.team);
+                    mTableSvg.append("text").attr("class", cur.team).attr("x", 10)
+                            .attr("fill", curColor).text(cur.rank);
+                    mTableSvg.append("text").attr("class", cur.team).attr("x", 60)
+                            .attr("fill", curColor).text(cur.team);
+                    mTableSvg.append("text").attr("class", cur.team).attr("x", 145)
+                            .attr("fill", curColor).text(cur.W);
+                    mTableSvg.append("text").attr("class", cur.team).attr("x", 185)
+                            .attr("fill", curColor).text(cur.D);
+                    mTableSvg.append("text").attr("class", cur.team).attr("x", 225)
+                            .attr("fill", curColor).text(cur.L);
+                    mTableSvg.append("text").attr("class", cur.team).attr("x", 265)
+   							.attr("fill", curColor).text(cur.win_rate);
+                    mTableSvg.append("text").attr("class", cur.team).attr("x", 335)
+                            .attr("fill", curColor).text(cur.diff_game);
+                    mTableSvg.selectAll('.' + cur.team).attr("y", getPosYByRank(cur.rank));
+                }
+
+                // draw line chart
+				let lineX = d3.scaleLinear().domain([mMinYear, mMaxYear]).range([0, LINE_CHART_WIDTH]);
+				let lineXAxis = d3.axisBottom(lineX);
+				mLineChartSvg.append("g")
+						.attr('transform', translate(LINE_MARGIN.LEFT, LINE_CHART_HEIGHT + LINE_MARGIN.TOP))
+						.call(lineXAxis);
+                updateLineChartYAxis();
+                for (let i = 0 ; i < mCurRanks.length ; i++) {
+                    let curTeam = mCurRanks[i].team;
+                    mLineChartSvg.append("path").attr("class", curTeam).attr("fill", "transparent")
+                            .attr("d", getTeamPathDString(curTeam)).attr("stroke", getColor(curTeam));
+                }
+
+                // draw bar chart
+                let barX = d3.scaleBand().domain(getCurTeamNames()).range([0, BAR_CHART_WIDTH]);
+                let barXAxis = d3.axisBottom(barX);
+                mBarChartSvg.append("g").attr("id", "barBottomAxis")
+                        .attr('transform', translate(BAR_MARGIN.LEFT, BAR_CHART_HEIGHT + BAR_MARGIN.TOP))
+                        .call(barXAxis);
+                let barLeftY = d3.scaleLinear().domain([0, getGameCount()]).range([BAR_CHART_HEIGHT, 0]);
+                let barRightY = d3.scaleLinear().domain([getGameCount(), 0]).range([BAR_CHART_HEIGHT, 0]);
+                let barLeftYAxis = d3.axisLeft(barLeftY);
+                let barRightYAxis = d3.axisRight(barRightY);
+                mBarChartSvg.append("g").attr("id", "barLeftYAxis")
+                        .attr('transform', translate(BAR_MARGIN.LEFT, BAR_MARGIN.TOP)).call(barLeftYAxis);
+                mBarChartSvg.append("g").attr("id", "barRightYAxis")
+                        .attr('transform', translate(BAR_MARGIN.LEFT + BAR_CHART_WIDTH, BAR_MARGIN.TOP))
+                        .call(barRightYAxis);
+                for (let i = 0 ; i < mCurRanks.length ; i++) {
+                    let cur = mCurRanks[i];
+                    let curColor = getColor(cur.team);
+                    let curWinHeight = parseInt(cur.W) * mBarChartRectHeightUnit;
+                    let curDrawHeight = parseInt(cur.D) * mBarChartRectHeightUnit;
+                    let curLoseHeight = parseInt(cur.L) * mBarChartRectHeightUnit;
+                    let curX = BAR_MARGIN.LEFT + (BAR_CHART_INTERVAL * (i + 1))
+                            + (mBarChartRectWidth * i);
+                    // lose rect
+                    mBarChartSvg.append("rect").attr("class", cur.team).attr("id", "lose")
+                            .attr("x", curX).attr("height", curLoseHeight)
+                            .attr("y", BAR_MARGIN.TOP).attr("width", mBarChartRectWidth)
+                            .style('fill', d3.rgb(curColor).darker(2));
+                    // draw rect
+                    mBarChartSvg.append("rect").attr("class", cur.team).attr("id", "draw")
+                            .attr("x", curX).attr("height", curDrawHeight)
+                            .attr("y", BAR_MARGIN.TOP + curLoseHeight)
+                            .attr("width", mBarChartRectWidth).style("fill", "#808080");
+                    // win rect
+                    mBarChartSvg.append("rect").attr("class", cur.team).attr("id", "win")
+                            .attr("x", curX).attr("height", curWinHeight)
+                            .attr("y", BAR_MARGIN.TOP + curLoseHeight + curDrawHeight)
+                            .attr("width", mBarChartRectWidth).style("fill", curColor);
+                }
+                // event
+                updateEvent();
+            }
+
+            function getGameCount() {
+                return parseInt(mCurRanks[0].games);
+            }
+
+            function getCurRank(team) {
+                for (let i = 0 ; i < mCurRanks.length ; i++) {
+                    if (team  == mCurRanks[i].team) {
+                        return parseInt(mCurRanks[i].rank);
+                    }
+                }
+                return null;
+            }
+
+            function updateBarChart() {
+                mBarChartRectWidth = (BAR_CHART_WIDTH - ((mCurRanks.length + 1) * BAR_CHART_INTERVAL))
+                        / mCurRanks.length;
+                mBarChartRectHeightUnit = BAR_CHART_HEIGHT / mCurRanks[0].games;
+                updateBarChartAxis();
+                // remove not existing team rects
+                for (let i = 0 ; i < mOldRanks.length ; i++) {
+                    if (!isExistingTeam(mOldRanks[i].team)) {
+                        d3.selectAll("rect." + mOldRanks[i].team).remove();
+                    }
+                }
+                // update existing team rects
+                for (let i = 0 ; i < mCurRanks.length ; i++) {
+                    let cur = mCurRanks[i];
+                    let curWinHeight = parseInt(cur.W) * mBarChartRectHeightUnit;
+                    let curDrawHeight = parseInt(cur.D) * mBarChartRectHeightUnit;
+                    let curLoseHeight = parseInt(cur.L) * mBarChartRectHeightUnit;
+                    let curRank = parseInt(cur.rank);
+                    let curX = BAR_MARGIN.LEFT + (curRank * BAR_CHART_INTERVAL)
+                            + ((curRank - 1) * mBarChartRectWidth);
+                    if (cur.team == "SBW" && mCurYear == "1991") {
+                        curX += BAR_CHART_INTERVAL + mBarChartRectWidth;
+                    }
+                    if (cur.team == "LG" && mCurYear == "2011") {
+                        curX += BAR_CHART_INTERVAL + mBarChartRectWidth;
+                    }
+
+                    let curColor = getColor(cur.team);
+                    if (isExistingTeam(cur.team)) {
+                        // console.log("Bar chart update team : " + cur.team);
+                        d3.selectAll("rect." + cur.team).each(function() {
+                            let rect = d3.select(this);
+                            let id = rect.attr("id");
+                            if (id == "lose") {
+                                rect.transition().duration(1200).attr("x", curX)
+                                        .attr("y", BAR_MARGIN.TOP).attr("width", mBarChartRectWidth)
+                                        .attr("height", curLoseHeight);
+                            }
+                            if (id == "draw") {
+                                rect.transition().duration(1200).attr("x", curX)
+                                        .attr("y", BAR_MARGIN.TOP + curLoseHeight)
+                                        .attr("width", mBarChartRectWidth).attr("height", curDrawHeight);
+                            }
+                            if (id == "win") {
+                                rect.transition().duration(1200).attr("x", curX)
+                                        .attr("y", BAR_MARGIN.TOP + curLoseHeight + curDrawHeight)
+                                        .attr("width", mBarChartRectWidth).attr("height", curWinHeight);
+                            }
+                        });
+                    }
+                    if (isNewTeam(cur.team)) {
+                        // console.log("Bar chart new team : " + cur.team);
+                        // lose rect
+                        mBarChartSvg.append("rect").attr("class", cur.team)
+                            .attr("id", "lose").attr("x", curX).attr("height", curLoseHeight)
+                            .attr("y", BAR_MARGIN.TOP).attr("width", mBarChartRectWidth)
+                            .style('fill', d3.rgb(curColor).darker(2)).style("opacity", 0)
+                            .transition().delay(1200).duration(1200).style("opacity", 1);
+                        // draw rect
+                        mBarChartSvg.append("rect").attr("class", cur.team).attr("id", "draw")
+                            .attr("x", curX).attr("height", curDrawHeight)
+                            .attr("y", BAR_MARGIN.TOP + curLoseHeight)
+                            .attr("width", mBarChartRectWidth).style("fill", "#808080")
+                            .style("opacity", 0).transition().delay(1200).duration(1200)
+                            .style("opacity", 1);
+                        // win rect
+                        mBarChartSvg.append("rect").attr("class", cur.team).attr("id", "win")
+                            .attr("x", curX).attr("height", curWinHeight)
+                            .attr("y", BAR_MARGIN.TOP + curLoseHeight + curDrawHeight)
+                            .attr("width", mBarChartRectWidth).style("fill", curColor)
+                            .style("opacity", 0).transition().delay(1200).duration(1200)
+                            .style("opacity", 1);
+                    }
+                }
+            }
+
+            function updateBarChartAxis() {
+                let barX = d3.scaleBand().domain(getCurTeamNames()).range([0, BAR_CHART_WIDTH]);
+                let barXAxis = d3.axisBottom(barX);
+                d3.select("g#barBottomAxis").transition().duration(1200).call(barXAxis);
+
+                let barLeftY = d3.scaleLinear().domain([0, getGameCount()]).range([BAR_CHART_HEIGHT, 0]);
+                let barRightY = d3.scaleLinear().domain([getGameCount(), 0]).range([BAR_CHART_HEIGHT, 0]);
+                let barLeftYAxis = d3.axisLeft(barLeftY);
+                let barRightYAxis = d3.axisRight(barRightY);
+                d3.select("g#barLeftYAxis").transition().duration(1200).call(barLeftYAxis);
+                d3.select("g#barRightYAxis").transition().duration(1200).call(barRightYAxis);
+            }
+
+            function getCurTeamNames() {
+                let ret = [];
+                for (let i = 0 ; i < mCurRanks.length ; i++) {
+                    if (mCurYear == "2011" && mCurRanks[i].team == "LG") {
+                        ret.push("Hanhwa");
+                    }
+                    if (mCurYear == "2011" && mCurRanks[i].team == "Hanhwa") {
+                        continue;
+                    }
+                    ret.push(mCurRanks[i].team);
+                }
+                return ret;
+            }
+
+            function updateLineChartYAxis() {
+                d3.select("g#lineYAxis").remove();
+                let lineY;
+                if (mCurCategory == "rank") {
+      				lineY = d3.scaleLinear().domain([mMaxRank, 1]).range([LINE_CHART_HEIGHT, 0]);
+                }
+                if (mCurCategory == "win_rate") {
+      				 lineY = d3.scaleLinear().domain([mMinWinRate, mMaxWinRate])
+                            .range([LINE_CHART_HEIGHT, 0]);
+                }
+                if (mCurCategory == "diff_game") {
+                    lineY = d3.scaleLinear().domain([mMaxDiffGame, mMinDiffGame])
+                            .range([LINE_CHART_HEIGHT, 0]);
+                }
+                let lineYAxis = d3.axisLeft(lineY);
+                mLineChartSvg.append("g").attr("id", "lineYAxis")
+                        .attr('transform',translate(LINE_MARGIN.LEFT, LINE_MARGIN.TOP))
+						.call(lineYAxis);
+            }
+
+            function updateEvent() {
+                for (let i = 0 ; i < mCurRanks.length ; i++) {
+                    let curTeam = mCurRanks[i].team;
+                    d3.selectAll("." + curTeam)
+                        .on("mouseenter", function() {
+                            d3.selectAll("text." + curTeam).attr("font-weight", 900);
+                            d3.selectAll("path." + curTeam).attr("stroke-width", 5);
+                            d3.selectAll("rect." + curTeam).attr("stroke", "black")
+                                    .attr("stroke-width", "3");
+                        })
+                        .on("mouseleave", function() {
+                            d3.selectAll("text." + curTeam).attr("font-weight", 100);
+                            d3.selectAll("path." + curTeam).attr("stroke-width", 1);
+                            d3.selectAll("rect." + curTeam).attr("stroke", 0)
+                                    .attr("stroke-width", 1);
+                        }
+                    );
+                }
+            }
+
+			function drawTableNewTeams() {
+				for (let i = 0 ; i < mCurRanks.length ; i++) {
+					if (!isNewTeam(mCurRanks[i].team)) {
+						continue;
+					}
+                    let cur = mCurRanks[i];
+					let curColor = getColor(cur.team);
+					let curY = getPosYByTeam(cur.team);
+					//console.log("draw new team : " + cur.team + ", color : " + curColor);
+                    mTableSvg.append("text").attr("class", cur.team).attr("x", 10).attr("y", curY)
+							.text(cur.rank).attr("fill", curColor).style("opacity", 0)
+                            .transition().delay(1200).duration(1200).style("opacity", 1);
+					mTableSvg.append("text").attr("class", cur.team).attr("x", 60).attr("y", curY)
+							.text(cur.team).attr("fill", curColor).style("opacity", 0)
+                            .transition().delay(1200)
+							.duration(1200).style("opacity", 1);
+					mTableSvg.append("text").attr("class", cur.team).attr("x", 145).attr("y", curY)
+							.text(cur.W).attr("fill", curColor).style("opacity", 0)
+                            .transition().delay(1200).duration(1200).style("opacity", 1);
+					mTableSvg.append("text").attr("class", cur.team).attr("x", 185).attr("y", curY)
+							.text(cur.D).attr("fill", curColor).style("opacity", 0)
+                            .transition().delay(1200).duration(1200).style("opacity", 1);
+                    mTableSvg.append("text").attr("class", cur.team).attr("x", 225).attr("y", curY)
+							.text(cur.L).attr("fill", curColor).style("opacity", 0)
+                            .transition().delay(1200).duration(1200).style("opacity", 1);
+                    mTableSvg.append("text").attr("class", cur.team).attr("x", 265).attr("y", curY)
+							.text(cur.win_rate).attr("fill", curColor).style("opacity", 0)
+                            .transition().delay(1200).duration(1200).style("opacity", 1);
+                    mTableSvg.append("text").attr("class", cur.team).attr("x", 335).attr("y", curY)
+							.text(cur.diff_game).attr("fill", curColor).style("opacity", 0)
+                            .transition().delay(1200).duration(1200).style("opacity", 1);
+				}
+			}
+
+            function getTeamPathDString(team) {
+                //console.log("mCurCategory : " + mCurCategory);
+                let curTeamData = getTeamData(team);
+                //console.log(curTeamData);
+                let curTeamRanks = curTeamData.ranks;
+                let curTeamWinRates = curTeamData.win_rates;
+                let curTeamDiffGames = curTeamData.diff_games;
+                let curTeamStartYear = curTeamData.startYear;
+                //console.log("mMinYear : " + mMinYear);
+                //console.log("curTeamStartYear : " + curTeamStartYear);
+                //console.log("mLineChartYearInterval : " + mLineChartYearInterval);
+                let dStr = "";
+                let x = ((curTeamStartYear - mMinYear) * mLineChartYearInterval) + LINE_MARGIN.LEFT;
+                if (mCurCategory == "rank") {
+                    // first rank
+                    let y = ((parseInt(curTeamRanks[0]) - 1) * mLineChartRankInterval) + LINE_MARGIN.TOP;
+                    dStr += "M " + x + " " + y;
+                    // remaings
+                    for (let i = 1 ; i < curTeamRanks.length ; i++) {
+                        let dx = mLineChartYearInterval;
+                        let curYear = curTeamStartYear + i;
+                        if (curYear == 1999) { // note 1999 and 2000 data are missing
+                            dx += (2 * mLineChartYearInterval);
+                        }
+                        let newY = ((parseInt(curTeamRanks[i]) - 1) * mLineChartRankInterval)
+                                + LINE_MARGIN.TOP;
+                        x += dx;
+                        dStr += " L " + x + " " + newY;
+                    }
+                }
+                if (mCurCategory == "win_rate") {
+                    // first win_rate
+                    let y = LINE_MARGIN.TOP + LINE_CHART_HEIGHT
+                            - (((parseFloat(curTeamWinRates[0]) - mMinWinRate) * 1000)
+                            * mLineChartWinRateUnit);
+                    dStr += "M " + x + " " + y;
+                    for (let i = 1 ; i < curTeamWinRates.length ; i++) {
+                        let dx = mLineChartYearInterval;
+                        let curYear = curTeamStartYear + i;
+                        if (curYear == 1999) { // note 1999 and 2000 data are missing
+                            dx += (2 * mLineChartYearInterval);
+                        }
+                        x += dx;
+                        let newY = LINE_MARGIN.TOP + LINE_CHART_HEIGHT
+                                - (((parseFloat(curTeamWinRates[i]) - mMinWinRate) * 1000)
+                                * mLineChartWinRateUnit);
+                        dStr += " L " + x + " " + newY;
+                    }
+                }
+                if (mCurCategory == "diff_game") {
+                    let y = LINE_MARGIN.TOP + ((parseFloat(curTeamDiffGames[0]) - mMinDiffGame)
+                            * mLineChartDiffGameInterval);
+                    dStr += "M " + x + " " + y;
+                    for (let  i = 1 ; i < curTeamDiffGames.length ; i++) {
+                        let dx = mLineChartYearInterval;
+                        let curYear = curTeamStartYear + i;
+                        if (curYear == 1999) {  // note 1999 and 2000 data are missing
+                            dx += (2 * mLineChartYearInterval);
+                        }
+                        let newY = LINE_MARGIN.TOP + ((parseFloat(curTeamDiffGames[i]) - mMinDiffGame)
+                            * mLineChartDiffGameInterval);
+                        x += dx;
+                        dStr += " L " + x + " " + newY;
+                    }
+                }
+                //console.log(team + " : " + dStr);
+                return dStr;
+            }
+
+            function parseTeamData() {
+                for (let i = 0 ; i < mData.length ; i++) {
+                    let curYear = parseInt(mData[i].year);
+                    let curRanks = mData[i].rankings;
+                    for (let j = 0 ; j < curRanks.length ; j++) {
+                        let curTeam = curRanks[j];
+                        if (isNewTeamData(curTeam.team)) {
+                            let newTeam = {};
+                            newTeam.name = curTeam.team;
+                            newTeam.startYear = curYear;
+                            newTeam.color = getNextColor();
+                            newTeam.ranks = [];
+                            newTeam.win_rates = [];
+                            newTeam.diff_games = [];
+                            newTeam.ranks.push(curTeam.rank);
+                            newTeam.win_rates.push(curTeam.win_rate);
+                            newTeam.diff_games.push(curTeam.diff_game);
+                            mTeamData.push(newTeam);
+                        } else {
+                            targetTeam = getTeamData(curTeam.team);
+                            targetTeam.ranks.push(curTeam.rank);
+                            targetTeam.win_rates.push(curTeam.win_rate);
+                            targetTeam.diff_games.push(curTeam.diff_game);
+                        }
+                        mMaxRank = Math.max(mMaxRank, parseInt(curTeam.rank));
+                        mMaxWinRate = Math.max(mMaxWinRate, parseFloat(curTeam.win_rate));
+                        mMinWinRate = Math.min(mMinWinRate, parseFloat(curTeam.win_rate));
+                        mMaxDiffGame = Math.max(mMaxDiffGame, parseFloat(curTeam.diff_game));
+                        mMinDiffGame = Math.min(mMinDiffGame, parseFloat(curTeam.diff_game));
+                    }
+                    mMinYear = Math.min(mMinYear, parseInt(curYear));
+                    mMaxYear = Math.max(mMaxYear, parseInt(curYear));
+                    mMaxTeamCount = Math.max(mMaxTeamCount, curRanks.length);
+                }
+            }
+
+            function isNewTeamData(team) {
+                for (let i = 0 ; i < mTeamData.length ; i++) {
+                    if (mTeamData[i].name == team) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            function isExistingTeam(team) {
+                for (let i = 0 ; i < mCurRanks.length ; i++) {
+                    if (team == mCurRanks[i].team) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+   			function isNewTeam(team) {
+				for (let i = 0 ; i < mOldRanks.length ; i++) {
+					if (team == mOldRanks[i].team) {
+						return false;
+					}
+				}
+				return true;
+			}
+
+            function getTeamData(team) {
+                for (let i = 0 ; i < mTeamData.length ; i++) {
+                    if (mTeamData[i].name == team) {
+                        return mTeamData[i];
+                    }
+                }
+                return null;
+            }
+
+            function getPosYByRank(rank) {
+                return TABLE_TOP_MARGIN + (parseInt(rank) * mTableRowInterval);
+            }
+
+            function getPosYByTeam(team) {
+                for (let i = 0 ; i < mCurRanks.length ; i++) {
+                    if (mCurRanks[i].team == team) {
+						if (team == "LG" && (mCurYear == "1991" || mCurYear == "2011")) {
+							return getPosYByRank((parseInt(mCurRanks[i].rank) + 1).toString());
+						}
+                        return getPosYByRank(mCurRanks[i].rank);
+                    }
+                }
+                return null;
+            }
+
+            function onYearChanged(year) {
+                // console.log(year);
+                // console.log("before : " + mCurRanks.length);
+                mOldRanks = mCurRanks;
+                mCurRanks = getRanks(year);
+                mCurYear = year;
+                mTableRowInterval = TABLE_HEIGHT / (mCurRanks.length + 1);
+                // console.log("after : " + mCurRanks.length);
+                updateTable();
+                updateLineChart();
+                updateBarChart();
+                updateEvent();
+            }
+
+            function onCategoryChanged(category) {
+                mOldRanks = mCurRanks;
+                mCurRanks = getRanks(mCurYear);
+                mOldCategory = mCurCategory;
+                mCurCategory = category;
+                updateLineChart();
+                updateEvent();
+            }
+
+            function updateLineChart() {
+                updateLineChartYAxis();
+                // remove not exist team lines
+                for (let i = 0 ; i < mOldRanks.length ; i++) {
+                    let targetTeam = mOldRanks[i];
+                    if (!isExistingTeam(targetTeam.team)) {
+                        // console.log("del line : " + targetTeam.team);
+                        d3.select("path." + targetTeam.team).remove();
+                    } else {
+                        // update
+                        // console.log("update line : " + targetTeam.team);
+                        d3.select("path." + targetTeam.team).transition().duration(1200)
+                                .attr("d", getTeamPathDString(targetTeam.team));
+                    }
+                }
+
+                // draw new team lines
+                for (let i = 0 ; i < mCurRanks.length ; i++) {
+                    let target = mCurRanks[i];
+                    if (isNewTeam(target.team)) {
+                        let curTeam = target.team;
+                        // console.log("new line : " + target.team);
+                        mLineChartSvg.append("path").attr("class", curTeam)
+                            .attr("fill", "transparent").attr("d", getTeamPathDString(curTeam))
+                            .attr("stroke", getColor(curTeam)).style("opacity", 0).transition()
+                            .delay(1200).duration(1200).style("opacity", 1);
+                    }
+                }
+            }
+
+            function getRanks(year) {
+                for (let i = 0 ; i < mData.length ; i++) {
+                    if (mData[i].year == year) {
+                        return mData[i].rankings;
+                    }
+                }
+                return null;
+            }
+
+            function updateTable() {
+                // update or remove old views
+                let updatedViews = [];
+                for (let i = 0 ; i < mOldRanks.length ; i++) {
+                    let isUpdated = false;
+                    for (let j = 0 ; j < mCurRanks.length ; j++) {
+                        if (mOldRanks[i].team == mCurRanks[j].team) {
+                            //console.log("update team : " + mOldRanks[i].team);
+                            isUpdated = true;
+                            mTableSvg.selectAll('.' + mOldRanks[i].team).each(function() {
+                                let curView = d3.select(this);
+                                if (curView.attr("x") == 10) {
+                                    curView.text(mCurRanks[j].rank);
+                                }
+                                if (curView.attr("x") == 145) {
+                                    curView.text(mCurRanks[j].W);
+                                }
+                                if (curView.attr("x") == 185) {
+                                    curView.text(mCurRanks[j].D);
+                                }
+                                if (curView.attr("x") == 225) {
+                                    curView.text(mCurRanks[j].L);
+                                }
+                                if (curView.attr("x") == 265) {
+                                    curView.text(mCurRanks[j].win_rate);
+                                }
+                                if (curView.attr("x") == 335) {
+                                    curView.text(mCurRanks[j].diff_game);
+                                }
+                                updatedViews.push(curView);
+                            });
+                            break;
+                        }
+                    }
+                    if (!isUpdated) {
+                        mTableSvg.selectAll('.' + mOldRanks[i].team).each(function() {
+                            d3.select(this).remove();
+                        });
+                    }
+                }
+                // reorder old views
+                updatedViews.forEach(function(view) {
+                    view.transition().duration(1200).attr('y', getPosYByTeam(view.attr("class")));
+                });
+   				drawTableNewTeams();
+            }
+        </script>
+    <body>
+        <h1>www.Sungmin.net</h1>
+        <h2>KBO Rankings</h2>
+        <select id="selYear"></select>
+        <select id="selCategory">
+            <option value="rank">Rank</option>
+            <option value="win_rate">WR</option>
+            <option value="diff_game">DG</option>
+        </select><br>
+        <svg id='table' width=420 height=500>
+            <text x=10 y=20>rank</text>
+            <text x=60 y=20>team</text>
+            <text x=145 y=20>W</text>
+            <text x=185 y=20>D</text>
+            <text x=225 y=20>L</text>
+            <text x=265 y=20>win_rate</text>
+            <text x=335 y=20>diff_game</text>
+        </svg>
+        <svg id="lineChart" width=600 height=500 />
+        <svg id="barChart" width=480 height=500 /></br>
+    </body>
+</html>

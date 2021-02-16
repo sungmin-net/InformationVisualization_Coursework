@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width">
+  <title>JS Bin</title>
+</head>
+<script src="https://d3js.org/d3.v6.min.js"></script>
+<script>
+
+    let mId = 0;
+    let mDotArr = [];
+    let mChartArr = [
+        {class: 'A', cnt : 0, color : d3.schemeCategory10[0]},
+        {class: 'B', cnt : 0, color : d3.schemeCategory10[1]},
+        {class: 'C', cnt : 0, color : d3.schemeCategory10[2]},
+        {class: 'D', cnt : 0, color : d3.schemeCategory10[3]},
+        {class: 'E', cnt : 0, color : d3.schemeCategory10[4]},
+        {class: 'F', cnt : 0, color : d3.schemeCategory10[5]},
+        {class: 'G', cnt : 0, color : d3.schemeCategory10[6]},
+        {class: 'H', cnt : 0, color : d3.schemeCategory10[7]},
+        {class: 'I', cnt : 0, color : d3.schemeCategory10[8]},
+        {class: 'J', cnt : 0, color : d3.schemeCategory10[9]}];
+
+    function getNewId() {
+        let ret = mId;
+        mId++;
+        return ret;
+    }
+    /* test
+    console.log("new id : " + getNewId());
+    console.log("new id : " + getNewId());
+    console.log("new id : " + getNewId());
+    console.log("new id : " + getNewId());
+    */
+
+    function getRandCxOrCy() {
+        // should follow Gaussian distribution, avg = 0, std = 100
+        // ref. http://mwultong.blogspot.com/2006/12/javascript-gauss-random.html
+        let v1, v2, s;
+        do {
+            v1 = 2 * Math.random() - 1; // -1.0 ~ 1.0
+            v2 = 2 * Math.random() - 1; // -1.0 ~ 1.0
+            s = v1 * v1 + v2 * v2;
+        } while (s >= 1 || s == 0);
+        s = Math.sqrt((-2 * Math.log(s)) / s);
+        ret = v1 * s * 100;
+        // keep SVG boundary
+        if (ret < -225) {
+            return -225;
+        }
+        if (ret > 225) {
+            return 225;
+        }
+        return ret;
+    }
+    /* test
+    console.log("get cx : " + getRandCxOrCy());
+    console.log("get cy : " + getRandCxOrCy());
+    */
+
+    function getRandRadius() {
+        // Math.random() already follows uniform distribution.
+        // see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/random
+        // ref. https://stackoverflow.com/questions/26795084/generating-uniform-distribution-using-math-random
+        let EXCLUSIVE_MAX = 8;
+        let INCLUSIVE_MIN = 2;
+        return Math.random() * (EXCLUSIVE_MAX - INCLUSIVE_MIN) + INCLUSIVE_MIN;
+      }
+    /* test
+    console.log("getRadius : " + getRandRadius());
+    console.log("getRadius : " + getRandRadius());
+    */
+
+    function getRandColor() {
+        // ref. https://medium.com/javascript-in-plain-english/how-to-generate-random-numbers-in-javascript-8bc3987896a7
+        let INCLUSIVE_MIN = 0;
+        let INCLUSIVE_MAX = 255;
+        return Math.floor(Math.random() * (INCLUSIVE_MAX - INCLUSIVE_MIN + 1)) + INCLUSIVE_MIN;
+    }
+    /* test
+    console.log("getRandColor : " + getRandColor());
+    console.log("getRandColor : " + getRandColor());
+    */
+
+    function getRandClass() {
+        return String.fromCharCode(Math.floor(Math.random() * 11) + "A".charCodeAt(0));
+    }
+    /* test
+    console.log("getRandClass() : " + getRandClass());
+    console.log("getRandClass() : " + getRandClass());
+    */
+
+    let mMaxClassCnt = 0;
+    function addClassCnt(v) {
+        for (let i = 0 ; i < 10 ; i++) {
+            if (v === mChartArr[i].class) {
+                mChartArr[i].cnt++;
+                mMaxClassCnt = Math.max(mMaxClassCnt, mChartArr[i].cnt);
+            }
+        }
+    }
+
+    // generate data
+    let mMinX = 0;
+    let mMaxX = 0;
+    let mMinY = 0;
+    let mMaxY = 0;
+
+    function getRandData() {
+        let ret = {};
+        ret.id = getNewId();
+        ret.cx = getRandCxOrCy();
+        ret.cy = getRandCxOrCy();
+        ret.radius = getRandRadius();
+        ret.red = getRandColor();
+        ret.green = getRandColor();
+        ret.blue = getRandColor();
+        ret.class = getRandClass();
+        return ret;
+    }
+
+    function generateData() {
+        for (let i = 0 ; i < 100 ; i++) {
+            let dot = getRandData();
+            addClassCnt(dot.class);
+            mDotArr.push(dot);
+            mMinX = Math.min(mMinX, dot.cx);
+            mMaxX = Math.max(mMaxX, dot.cx);
+            mMinY = Math.min(mMinY, dot.cy);
+            mMaxY = Math.max(mMaxY, dot.cy);
+        }
+    }
+    generateData();
+
+    /* test
+    for (let i = 0 ; i < 100 ; i++) {
+        console.log(mDotArr[i]);
+    }
+    // console.log(JSON.stringify(mDotArr));
+    console.log("min X : " + mMinX);
+    console.log("min Y : " + mMinY);
+    console.log("max X : " + mMaxX);
+    console.log("max Y : " + mMaxY);
+
+    for (let i = 0 ; i < 10 ; i++) {
+        console.log(mChartArr[i]);
+    }
+    console.log("max class cnts : " + mMaxClassCnt);
+    */
+
+    function translate(x, y) {
+        return 'translate(' + x + ', ' + y + ')';
+    }
+
+    function getRgbStr(r, g, b) {
+        return "rgb(" + r + "," + g + "," + b + ")";
+    }
+
+    let mUpdateCount = 0;
+    function isToBeRemoved(id) {
+        return parseInt(id.substring(1)) < (mUpdateCount * 25);
+    }
+
+    function moveCx(v) {
+        return v + 225 + margin.left;
+    }
+
+    function moveCy(v) {
+        return v + 225 + margin.top;
+    }
+
+    let j = 0;
+    function update() {
+        // console.log("update!");
+        mUpdateCount++;
+
+        // ref. https://stackoverflow.com/questions/27405377/iterate-over-already-created-nodes-in-d3js
+        let dots = svg.selectAll('circle');
+        dots.each(function() {
+            // console.log("circle ids : " + d3.select(this).attr("id"));
+            if (isToBeRemoved(d3.select(this).attr("id"))) {
+                d3.select(this).remove();
+            }
+        });
+
+        //dots = svg.selectAll('circle');
+        dots.each(function() {
+            if (!isToBeRemoved(d3.select(this).attr("id"))) {
+                let newCx = getRandCxOrCy();
+                let newCy = getRandCxOrCy();
+                    d3.select(this).transition().duration(3000)
+                      .attr("cx", moveCx(newCx))
+                      .attr("cy", moveCy(newCy));
+                mDotArr[j].cx = newCx;
+                mDotArr[j].cy = newCy;
+            }
+        });
+
+        for (let i = 0 ; i < 25 ; i++) {
+            mDotArr.shift(); // remove first
+            let newDot = getRandData();
+            mDotArr.push(newDot);
+        }
+
+        // update metadata
+        mMinX = 0;
+        mMaxX = 0;
+        mMinY = 0;
+        mMaxY = 0;
+        mMaxClassCnt = 0;
+        for (let i = 0 ; i < 10 ; i++) {
+            mChartArr[i].cnt = 0;
+        }
+        for (let i = 0 ; i < 100 ; i++) {
+            mMinX = Math.min(mMinX, mDotArr[i].cx);
+            mMaxX = Math.max(mMaxX, mDotArr[i].cx);
+            mMinY = Math.min(mMinY, mDotArr[i].cy);
+            mMaxY = Math.max(mMaxY, mDotArr[i].cy);
+            addClassCnt(mDotArr[i].class);
+        }
+
+        // draw new dots
+        for (let i = 99 ; i >= 75 ; i--) {
+            let rgbStr = getRgbStr(mDotArr[i].red, mDotArr[i].green, mDotArr[i].blue);
+            svg.append('g').append("circle").style("opacity", 0).attr("id", "c" + mDotArr[i].id)
+                  .attr("cx", moveCx(mDotArr[i].cx)).attr("cy", moveCy(mDotArr[i].cy)).attr("r", mDotArr[i].radius)
+                  .style("fill", rgbStr)
+                  .on('mouseenter', function() {
+                          restoreRgb = rgbStr;
+                          restoreRadius = d3.select(this).attr('r');
+                          d3.select(this).attr("r", mDotArr[i].radius * 2).style("fill", "rgb(0,0,0)");
+                          //console.log("dot id : " + mDotArr[i].id); // for debugging
+                          //console.log("dot cx : " + mDotArr[i].cx); // for debugging
+                          //console.log("dot cy : " + mDotArr[i].cy); // for debugging
+                      })
+                  .on('mouseleave', function() {
+                          d3.select(this).attr("r", restoreRadius)
+                          .style("fill", restoreRgb)})
+                  .transition()
+                  .delay(3000)
+                  .duration(1000)
+                  .style("opacity", 1);
+        }
+
+        let bars = svgChart.selectAll('rect');
+        /*
+        for (let i = 0 ; i < 10 ; i++) {
+            console.log(mChartArr[i]);
+        }
+        */
+
+        j = 0;
+        bars.each(function() {
+            barHeight = mChartArr[j++].cnt * barHeightUnit;
+            d3.select(this).transition().duration(2000)
+              .attr("height", barHeight)
+              .attr('y', height - barHeight)
+        });
+
+
+        /* test
+        for (let i = 0 ; i < 100 ; i++) {
+            console.log(mDotArr[i]);
+        }
+        console.log("min X : " + mMinX);
+        console.log("min Y : " + mMinY);
+        console.log("max X : " + mMaxX);
+        console.log("max Y : " + mMaxY);
+
+        for (let i = 0 ; i < 10 ; i++) {
+            console.log(mChartArr[i]);
+        }
+
+        console.log("max class cnts : " + mMaxClassCnt);
+        */
+    }
+</script>
+<body>
+    <h1>www.Sungmin.net</h1>
+    <input id="btn" type="button" value="Update" >
+    <script>
+        let svgBtn = d3.select('input');
+        svgBtn.on('click', function() {
+            update();
+            d3.select(this).attr('disabled', true).transition().delay(4000).attr('disabled', null);
+        });
+    </script>
+    <br>
+    <div style="width:1295px;height:864"></div>
+    <script>
+        let svgWidth = 550;
+        let svgHeight = 550;
+        let margin = {top: 20, right : 10, bottom : 30, left : 40};
+        let width = svgWidth - margin.left - margin.right;
+        let height = svgHeight - margin.top - margin.bottom;
+        let svg = d3.select('div')
+            .append('svg').attr('width', svgWidth).attr('height', svgHeight)
+            .append('g').attr('transform', translate(margin.left, margin.top));
+
+        let x = d3.scaleLinear().domain([mMinX, mMaxX]).range([0, width]);
+        let y = d3.scaleLinear().domain([mMinY, mMaxY]).range([height, 0]);
+
+        let xAxis = d3.axisBottom(x);
+        let yAxis = d3.axisLeft(y);
+
+        svg.append('g').attr('transform', translate(0, height)).call(xAxis);
+        svg.append('g').call(yAxis);
+
+        let restoreRgb;
+        let restoreRadius;
+        // draw dots
+        for (let i = 0 ; i < 100 ; i++) {
+          //console.log(mDotArr[i]);
+          let adjustedCx = moveCx(mDotArr[i].cx);
+          let adjustedCy = moveCy(mDotArr[i].cy);
+          let rgbStr = getRgbStr(mDotArr[i].red, mDotArr[i].green, mDotArr[i].blue);
+          svg.append('g').append("circle").attr("id", "c" + mDotArr[i].id)
+                  .attr("cx", adjustedCx).attr("cy", adjustedCy).attr("r", mDotArr[i].radius)
+                  .style("fill", rgbStr)
+                  .on('mouseenter', function() {
+                          restoreRgb = rgbStr;
+                          restoreRadius = d3.select(this).attr('r');
+                          d3.select(this).attr("r", mDotArr[i].radius * 2).style("fill", "rgb(0,0,0)");
+                          //console.log("dot id : " + mDotArr[i].id); // for debugging
+                          //console.log("dot cx : " + mDotArr[i].cx + ", adj cx : " + adjustedCx); // for debugging
+                          //console.log("dot cy : " + mDotArr[i].cy + ", adj cy : " + adjustedCy); // for debugging
+                      })
+                  .on('mouseleave', function() {
+                          d3.select(this).attr("r", restoreRadius)
+                          .style("fill", restoreRgb)});
+        }
+        //console.log("mMinX : " + mMinX);
+        //console.log("mMinY : " + mMinY);
+
+        let svgChart = d3.select('div')
+            .append('svg').attr('width', svgWidth).attr('height', svgHeight).attr('x', svgWidth)
+            .append('g').attr('transform', translate(margin.left, margin.top));
+
+        // ref. https://falsy.me/d3-js-%EB%A5%BC-%EC%82%AC%EC%9A%A9%ED%95%98%EC%97%AC-%EB%8D%B0%EC%9D%B4%ED%84%B0-%EC%8B%9C%EA%B0%81%ED%99%94%ED%95%98%EA%B8%B0-4-custom-bar-charts/
+        let xChart = d3.scaleBand().domain(mChartArr.map(d => d.class)).range([margin.left, width - margin.right]);
+        let yChart = d3.scaleLinear().domain([0, 18 /*mMaxClassCnt*/ ]).range([height - margin.top, 0]);
+
+        let xAxisChart = d3.axisBottom(xChart);
+        let yAxisChart = d3.axisLeft(yChart);
+        svgChart.append('g').attr('transform', translate(0, height)).call(xAxisChart);
+        svgChart.append('g').attr('transform', translate(margin.left, margin.top)).call(yAxisChart);
+
+        // draw bars
+        let barHeightUnit = (height - margin.top) / 18 // mMaxClassCnt;
+        for (let i = 0 ; i < 10 ; i++) {
+            let barHeight = mChartArr[i].cnt * barHeightUnit;
+            let barWidth = 35;
+            let barInterval = 10;
+            svgChart.append('g').append('rect')
+                .attr('x', margin.left + (barInterval / 2)/*first interval*/ + (i * barInterval) + (i * barWidth))
+                .attr('y', height - barHeight)
+                .attr('width', barWidth)
+                .attr('height', barHeight)
+                .style('fill', mChartArr[i].color);
+        }
+    </script>
+</body>
+</html>
